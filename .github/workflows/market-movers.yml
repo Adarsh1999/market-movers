@@ -1,0 +1,35 @@
+name: Daily Market Movers Email
+
+on:
+  schedule:
+    # Runs at 4:30 PM ET (21:30 UTC) Monday-Friday
+    # Market closes at 4 PM ET, giving 30 min buffer for data to update
+    - cron: '30 21 * * 1-5'
+  
+  # Allow manual trigger for testing
+  workflow_dispatch:
+
+jobs:
+  send-market-report:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run market movers script
+        env:
+          ALPHA_VANTAGE_KEY: ${{ secrets.ALPHA_VANTAGE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_FROM: "Market Movers <onboarding@resend.dev>"
+        run: python market_movers.py
+
