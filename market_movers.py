@@ -1,7 +1,7 @@
 import os
 import requests
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -69,18 +69,32 @@ SP500_TICKERS = [
 ]
 
 
-def fetch_sp500_data():
-    """Fetch current day's data for all S&P 500 stocks using yfinance"""
-    print(f"Fetching data for {len(SP500_TICKERS)} S&P 500 stocks...")
+def is_weekend():
+    """Check if today is Saturday (5) or Sunday (6)"""
+    return datetime.now().weekday() in [5, 6]
+
+
+def fetch_sp500_data(weekly=False):
+    """Fetch stock data for all S&P 500 stocks using yfinance
+    
+    Args:
+        weekly: If True, fetch 5 trading days of data for weekly summary
+    """
+    mode = "weekly" if weekly else "daily"
+    print(f"Fetching {mode} data for {len(SP500_TICKERS)} S&P 500 stocks...")
     
     # Download data for all tickers at once (much faster)
     tickers_str = ' '.join(SP500_TICKERS)
+    
+    # For weekly data, we need at least 6 days to capture 5 trading days
+    # (accounting for weekends and potential holidays)
+    period = '7d' if weekly else '2d'
     
     # Suppress warnings and use auto_adjust=True
     import warnings
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        data = yf.download(tickers_str, period='2d', progress=False, threads=True, auto_adjust=True, ignore_tz=True)
+        data = yf.download(tickers_str, period=period, progress=False, threads=True, auto_adjust=True, ignore_tz=True)
     
     results = []
     
@@ -92,40 +106,83 @@ def fetch_sp500_data():
             else:
                 close_prices = data['Close']
             
+            # Drop NaN values to get only trading days
+            close_prices = close_prices.dropna()
+            
             # Need at least 2 days of data
             if len(close_prices) < 2:
                 continue
             
-            prev_close = close_prices.iloc[-2]
-            current_close = close_prices.iloc[-1]
-            
-            # Skip if no valid data
-            if prev_close == 0 or current_close == 0:
-                continue
-            
-            # Calculate change
-            change = current_close - prev_close
-            change_pct = (change / prev_close) * 100
-            
-            # Get volume
-            if len(SP500_TICKERS) > 1:
-                volume = data['Volume'][ticker].iloc[-1]
+            if weekly:
+                # For weekly: compare first day to last day of the week
+                # Get up to 5 trading days
+                trading_days = close_prices.tail(5)
+                if len(trading_days) < 2:
+                    continue
+                    
+                week_start_close = trading_days.iloc[0]
+                week_end_close = trading_days.iloc[-1]
+                
+                # Skip if no valid data
+                if week_start_close == 0 or week_end_close == 0:
+                    continue
+                
+                # Calculate weekly change
+                change = week_end_close - week_start_close
+                change_pct = (change / week_start_close) * 100
+                
+                # Get average volume for the week
+                if len(SP500_TICKERS) > 1:
+                    volume_data = data['Volume'][ticker].dropna().tail(5)
+                else:
+                    volume_data = data['Volume'].dropna().tail(5)
+                avg_volume = volume_data.mean() if len(volume_data) > 0 else 0
+                
+                # Get the number of trading days captured
+                days_captured = len(trading_days)
+                
+                results.append({
+                    'ticker': ticker,
+                    'price': week_end_close,
+                    'week_start_price': week_start_close,
+                    'change': change,
+                    'change_percentage': f"{change_pct:+.2f}%",
+                    'change_pct_raw': change_pct,
+                    'volume': int(avg_volume) if avg_volume > 0 else 0,
+                    'days_captured': days_captured
+                })
             else:
-                volume = data['Volume'].iloc[-1]
-            
-            results.append({
-                'ticker': ticker,
-                'price': current_close,
-                'change': change,
-                'change_percentage': f"{change_pct:+.2f}%",
-                'change_pct_raw': change_pct,
-                'volume': int(volume) if volume > 0 else 0
-            })
+                # Daily mode: compare yesterday to today
+                prev_close = close_prices.iloc[-2]
+                current_close = close_prices.iloc[-1]
+                
+                # Skip if no valid data
+                if prev_close == 0 or current_close == 0:
+                    continue
+                
+                # Calculate change
+                change = current_close - prev_close
+                change_pct = (change / prev_close) * 100
+                
+                # Get volume
+                if len(SP500_TICKERS) > 1:
+                    volume = data['Volume'][ticker].iloc[-1]
+                else:
+                    volume = data['Volume'].iloc[-1]
+                
+                results.append({
+                    'ticker': ticker,
+                    'price': current_close,
+                    'change': change,
+                    'change_percentage': f"{change_pct:+.2f}%",
+                    'change_pct_raw': change_pct,
+                    'volume': int(volume) if volume > 0 else 0
+                })
         except Exception as e:
             # Skip stocks with errors
             continue
     
-    print(f"Successfully fetched data for {len(results)} stocks")
+    print(f"Successfully fetched {mode} data for {len(results)} stocks")
     return results
 
 
@@ -144,10 +201,14 @@ def get_top_movers(stocks, limit=20):
     return gainers, losers
 
 
-def build_html_table(stocks, is_gainers=True):
+def build_html_table(stocks, is_gainers=True, weekly=False):
     """Build an HTML table for the stock data"""
     color = "#22c55e" if is_gainers else "#ef4444"
-    title = "🟢 Top S&P 500 Gainers" if is_gainers else "🔴 Top S&P 500 Losers"
+    
+    if weekly:
+        title = "🟢 Top Weekly Gainers" if is_gainers else "🔴 Top Weekly Losers"
+    else:
+        title = "🟢 Top S&P 500 Gainers" if is_gainers else "🔴 Top S&P 500 Losers"
     
     if not stocks:
         return f"""
@@ -161,14 +222,46 @@ def build_html_table(stocks, is_gainers=True):
     for i, stock in enumerate(stocks, 1):
         change_pct = stock["change_percentage"]
         volume = stock.get("volume", 0)
-        rows += f"""
-        <tr style="border-bottom: 1px solid #e5e7eb;">
-            <td style="padding: 8px; text-align: center;">{i}</td>
-            <td style="padding: 8px; font-weight: bold;">{stock["ticker"]}</td>
-            <td style="padding: 8px; text-align: right;">${float(stock["price"]):.2f}</td>
-            <td style="padding: 8px; text-align: right; color: {color};">{change_pct}</td>
-            <td style="padding: 8px; text-align: right;">{volume:,}</td>
-        </tr>
+        
+        if weekly:
+            week_start = stock.get("week_start_price", stock["price"])
+            rows += f"""
+            <tr style="border-bottom: 1px solid #e5e7eb;">
+                <td style="padding: 8px; text-align: center;">{i}</td>
+                <td style="padding: 8px; font-weight: bold;">{stock["ticker"]}</td>
+                <td style="padding: 8px; text-align: right;">${float(week_start):.2f}</td>
+                <td style="padding: 8px; text-align: right;">${float(stock["price"]):.2f}</td>
+                <td style="padding: 8px; text-align: right; color: {color}; font-weight: bold;">{change_pct}</td>
+                <td style="padding: 8px; text-align: right;">{volume:,}</td>
+            </tr>
+            """
+        else:
+            rows += f"""
+            <tr style="border-bottom: 1px solid #e5e7eb;">
+                <td style="padding: 8px; text-align: center;">{i}</td>
+                <td style="padding: 8px; font-weight: bold;">{stock["ticker"]}</td>
+                <td style="padding: 8px; text-align: right;">${float(stock["price"]):.2f}</td>
+                <td style="padding: 8px; text-align: right; color: {color};">{change_pct}</td>
+                <td style="padding: 8px; text-align: right;">{volume:,}</td>
+            </tr>
+            """
+    
+    if weekly:
+        header_row = """
+                    <th style="padding: 10px; text-align: center; width: 50px;">#</th>
+                    <th style="padding: 10px; text-align: left;">Symbol</th>
+                    <th style="padding: 10px; text-align: right;">Week Start</th>
+                    <th style="padding: 10px; text-align: right;">Week End</th>
+                    <th style="padding: 10px; text-align: right;">Weekly Change</th>
+                    <th style="padding: 10px; text-align: right;">Avg Volume</th>
+        """
+    else:
+        header_row = """
+                    <th style="padding: 10px; text-align: center; width: 50px;">#</th>
+                    <th style="padding: 10px; text-align: left;">Symbol</th>
+                    <th style="padding: 10px; text-align: right;">Price</th>
+                    <th style="padding: 10px; text-align: right;">Change %</th>
+                    <th style="padding: 10px; text-align: right;">Volume</th>
         """
     
     return f"""
@@ -177,11 +270,7 @@ def build_html_table(stocks, is_gainers=True):
         <table style="width: 100%; border-collapse: collapse; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px;">
             <thead>
                 <tr style="background-color: #f3f4f6;">
-                    <th style="padding: 10px; text-align: center; width: 50px;">#</th>
-                    <th style="padding: 10px; text-align: left;">Symbol</th>
-                    <th style="padding: 10px; text-align: right;">Price</th>
-                    <th style="padding: 10px; text-align: right;">Change %</th>
-                    <th style="padding: 10px; text-align: right;">Volume</th>
+                    {header_row}
                 </tr>
             </thead>
             <tbody>
@@ -193,7 +282,7 @@ def build_html_table(stocks, is_gainers=True):
 
 
 def build_email_html(gainers, losers):
-    """Build the complete email HTML"""
+    """Build the complete email HTML for daily report"""
     today = datetime.now().strftime("%A, %B %d, %Y")
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
@@ -225,17 +314,69 @@ def build_email_html(gainers, losers):
     """
 
 
-def send_email(html_content):
+def build_weekly_email_html(gainers, losers):
+    """Build the complete email HTML for weekly summary - top 20 gainers and losers"""
+    today = datetime.now()
+    # Calculate the week range (Monday to Friday of the past week)
+    days_since_friday = (today.weekday() - 4) % 7
+    if days_since_friday == 0:
+        days_since_friday = 7 if today.weekday() > 4 else 0
+    week_end = today - timedelta(days=days_since_friday)
+    week_start = week_end - timedelta(days=4)
+    
+    week_range = f"{week_start.strftime('%b %d')} - {week_end.strftime('%b %d, %Y')}"
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    gainers_table = build_html_table(gainers, is_gainers=True, weekly=True)
+    losers_table = build_html_table(losers, is_gainers=False, weekly=True)
+    
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #ffffff;">
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #1f2937; margin-bottom: 5px;">📊 Weekly S&P 500 Market Movers</h1>
+            <p style="color: #6b7280; margin: 0;">{week_range}</p>
+            <p style="color: #9ca3af; font-size: 12px; margin-top: 5px;">Cumulative 5-Day Performance | Generated: {now}</p>
+        </div>
+        
+        {gainers_table}
+        {losers_table}
+        
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #9ca3af; font-size: 12px;">
+            <p>Data source: Yahoo Finance | S&P 500 Index</p>
+        </div>
+    </body>
+    </html>
+    """
+
+
+def send_email(html_content, weekly=False):
     """Send email via Resend API to multiple recipients"""
-    today = datetime.now().strftime("%b %d, %Y")
+    today = datetime.now()
     
     if not EMAIL_TO:
         raise ValueError("EMAIL_TO is not set. Please set it in .env or GitHub Secrets.")
     
+    if weekly:
+        # Calculate the week range for subject
+        days_since_friday = (today.weekday() - 4) % 7
+        if days_since_friday == 0:
+            days_since_friday = 7 if today.weekday() > 4 else 0
+        week_end = today - timedelta(days=days_since_friday)
+        week_start = week_end - timedelta(days=4)
+        subject = f"📊 Weekly S&P 500 Summary - {week_start.strftime('%b %d')} to {week_end.strftime('%b %d')}"
+    else:
+        subject = f"📈 S&P 500 Market Movers - {today.strftime('%b %d, %Y')}"
+    
     payload = {
         "from": EMAIL_FROM,
         "to": EMAIL_TO,  # List of emails
-        "subject": f"📈 S&P 500 Market Movers - {today}",
+        "subject": subject,
         "html": html_content
     }
     
@@ -251,8 +392,29 @@ def send_email(html_content):
 
 
 def main():
-    print("Fetching S&P 500 market data...")
-    stocks = fetch_sp500_data()
+    # Check if we should run weekly summary (weekend) or daily report
+    weekend = is_weekend()
+    
+    # Allow forcing weekly mode via environment variable for testing
+    force_weekly = os.environ.get("FORCE_WEEKLY", "").lower() in ["true", "1", "yes"]
+    weekly_mode = weekend or force_weekly
+    
+    if weekly_mode:
+        print("=" * 50)
+        print("🗓️  WEEKEND MODE: Generating Weekly Summary")
+        print("=" * 50)
+        run_weekly_report()
+    else:
+        print("=" * 50)
+        print("📅 WEEKDAY MODE: Generating Daily Report")
+        print("=" * 50)
+        run_daily_report()
+
+
+def run_daily_report():
+    """Run the daily market movers report"""
+    print("\nFetching S&P 500 daily market data...")
+    stocks = fetch_sp500_data(weekly=False)
     
     if not stocks:
         raise ValueError("No stock data retrieved")
@@ -276,7 +438,45 @@ def main():
     html = build_email_html(gainers, losers)
     
     print("Sending email...")
-    result = send_email(html)
+    result = send_email(html, weekly=False)
+    print(f"Email sent successfully! ID: {result.get('id')}")
+
+
+def run_weekly_report():
+    """Run the weekly summary report - top 20 gainers and losers for the week"""
+    print("\nFetching S&P 500 weekly market data (5 trading days)...")
+    stocks = fetch_sp500_data(weekly=True)
+    
+    if not stocks:
+        raise ValueError("No stock data retrieved")
+    
+    print(f"\nFetched data for {len(stocks)} stocks")
+    
+    # Check how many trading days we captured
+    if stocks:
+        avg_days = sum(s.get('days_captured', 0) for s in stocks) / len(stocks)
+        print(f"Average trading days captured: {avg_days:.1f}")
+    
+    print("\nCalculating top weekly gainers and losers...")
+    gainers, losers = get_top_movers(stocks, limit=20)
+    
+    print(f"Found {len(gainers)} gainers and {len(losers)} losers")
+    
+    if gainers:
+        print("\nTop 5 Weekly Gainers:")
+        for s in gainers[:5]:
+            print(f"  {s['ticker']}: {s['change_percentage']}")
+    
+    if losers:
+        print("\nTop 5 Weekly Losers:")
+        for s in losers[:5]:
+            print(f"  {s['ticker']}: {s['change_percentage']}")
+    
+    print("\nBuilding weekly email...")
+    html = build_weekly_email_html(gainers, losers)
+    
+    print("Sending email...")
+    result = send_email(html, weekly=True)
     print(f"Email sent successfully! ID: {result.get('id')}")
 
 
