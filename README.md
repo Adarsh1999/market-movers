@@ -1,134 +1,140 @@
 # S&P 500 Market Movers 📈
 
-Automated daily email reports of top S&P 500 stock gainers and losers, delivered to your inbox every weekday at 4:30 PM ET.
+A beautiful, auto-updating website that displays daily S&P 500 top gainers and losers. Updated automatically every weekday after market close.
 
-## Features
+## ✨ Features
 
-- 🟢 Top 20 S&P 500 Gainers
-- 🔴 Top 20 S&P 500 Losers
-- 📧 Beautiful HTML email format
-- ⏰ Automatic delivery via GitHub Actions (Mon-Fri)
-- 👥 Support for multiple email recipients
-- 🔄 Manual trigger available for testing
+- 🟢 **Top 20 Gainers** - Stocks with highest daily gains
+- 🔴 **Top 20 Losers** - Stocks with biggest daily losses
+- 📊 **Market Summary** - Quick overview of market sentiment
+- 📥 **CSV Downloads** - Export data for your own analysis
+- 📋 **Copy to Clipboard** - Quick data sharing
+- 🔍 **Search** - Find specific stocks instantly
+- 📱 **Mobile Responsive** - Works on all devices
+- 🌙 **Dark Theme** - Easy on the eyes
+- ⏰ **Auto-Updates** - Refreshes daily via GitHub Actions
 
-## Setup
+## 🚀 Live Demo
 
-### 1. Get Resend API Key
+Visit: `https://YOUR-USERNAME.github.io/market-movers/`
 
-| Service | URL | Free Tier |
-|---------|-----|-----------|
-| Resend | [resend.com](https://resend.com) | 3,000 emails/month |
+## 🛠️ Setup
 
-### 2. Configure GitHub Secrets
+### 1. Fork or Clone This Repository
 
-Go to your repo → **Settings** → **Secrets and variables** → **Actions** → **New repository secret**
+```bash
+git clone https://github.com/YOUR-USERNAME/market-movers.git
+cd market-movers
+```
 
-Add these **2 secrets**:
+### 2. Enable GitHub Pages
 
-| Secret Name | Value | Example |
-|-------------|-------|---------|
-| `RESEND_API_KEY` | Your Resend API key | `re_xxxx...` |
-| `EMAIL_TO` | Email recipient(s), comma-separated for multiple | `user1@gmail.com,user2@gmail.com` |
+1. Go to your repo → **Settings** → **Pages**
+2. Under "Build and deployment", select **GitHub Actions**
+3. Save changes
 
-**⚠️ Important for Resend Free Tier:**
-- On the free tier, you can only send to your own email (the one you signed up with)
-- To send to other recipients, verify a domain at [resend.com/domains](https://resend.com/domains)
+### 3. Run the Workflow
 
-### 3. Test Locally (Optional)
+1. Go to your repo → **Actions** tab
+2. Click **"Update Market Movers Website"**
+3. Click **"Run workflow"** → **"Run workflow"**
+
+The site will be live at `https://YOUR-USERNAME.github.io/market-movers/` within a few minutes!
+
+## 📅 Schedule
+
+The website automatically updates:
+- **Time:** 4:30 PM ET (21:30 UTC)
+- **Days:** Monday through Friday
+- **Why:** Market closes at 4 PM ET, giving 30 minutes for data to settle
+
+## 🏗️ How It Works
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│              GitHub Actions (4:30 PM ET, Mon-Fri)           │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│   1. Fetch S&P 500 data from Yahoo Finance (yfinance)       │
+│   2. Calculate top 20 gainers and losers                    │
+│   3. Generate static HTML with embedded data                │
+│   4. Create downloadable CSV files                          │
+│   5. Deploy to GitHub Pages                                 │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 📁 Project Structure
+
+```
+market-movers/
+├── generate_site.py          # Main site generator script
+├── requirements.txt          # Python dependencies
+├── README.md                 # This file
+├── LICENSE                   # MIT License
+└── .github/
+    └── workflows/
+        └── market-movers.yml # GitHub Actions workflow
+```
+
+## 🧪 Run Locally
 
 ```bash
 # Install dependencies
 pip install -r requirements.txt
 
-# Create .env file
-cat > .env << EOF
-RESEND_API_KEY=your-resend-key
-EMAIL_TO=your-email@example.com
-EMAIL_FROM=Market Movers <onboarding@resend.dev>
-EOF
+# Generate the site
+python generate_site.py
 
-# Run the script
-python3 market_movers.py
+# View the site
+cd dist
+python -m http.server 8000
+# Open http://localhost:8000 in your browser
 ```
 
-**For multiple recipients locally:**
-```bash
-EMAIL_TO=user1@gmail.com,user2@gmail.com,user3@gmail.com
-```
+## 📊 Generated Files
 
-### 4. Push to GitHub
+After running, the `dist/` folder contains:
 
-```bash
-git add .
-git commit -m "Add S&P 500 market movers automation"
-git push origin main
-```
+| File | Description |
+|------|-------------|
+| `index.html` | Main website |
+| `data/gainers.csv` | Top 20 gainers in CSV format |
+| `data/losers.csv` | Top 20 losers in CSV format |
+| `data/all_stocks.csv` | All S&P 500 stocks sorted by performance |
+| `data/data.json` | JSON data for programmatic access |
 
-### 5. Test the Workflow
+## 💰 Cost
 
-1. Go to your repo → **Actions** tab
-2. Click **"Daily Market Movers Email"**
-3. Click **"Run workflow"** → **"Run workflow"** (to test manually)
+| Service | Cost |
+|---------|------|
+| GitHub Pages Hosting | **FREE** |
+| GitHub Actions | **FREE** (2,000 min/month) |
+| Yahoo Finance Data | **FREE** |
+| **Total** | **$0** |
 
-## Schedule
+## 🔄 Alternative: Email Reports
 
-The workflow runs automatically:
-- **Time:** 4:30 PM ET (21:30 UTC)
-- **Days:** Monday through Friday
-- **Why:** Market closes at 4 PM ET, giving 30 minutes for data to settle
+Want daily email reports instead? Check out the [`email-approach`](../../tree/email-approach) branch which sends beautiful HTML emails via Resend.
 
-## How It Works
+## 📈 Data Source
 
-```
-┌─────────────────────────────────────────────────────────┐
-│              GitHub Actions Cron Job                    │
-│              (Runs 4:30 PM ET, Mon-Fri)                 │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│   1. Fetch S&P 500 data from Yahoo Finance (yfinance)   │
-│   2. Calculate top gainers and losers                   │
-│   3. Format as HTML table                               │
-│   4. Send email via Resend to all recipients            │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
-```
+- **Provider:** Yahoo Finance via `yfinance` library
+- **Coverage:** All S&P 500 stocks (~500 companies)
+- **Update Frequency:** Daily (weekdays only)
+- **No API key required!**
 
-## Files
+## 🤝 Contributing
 
-```
-market-movers/
-├── market_movers.py              # Main Python script
-├── requirements.txt              # Python dependencies
-├── .env                          # Local environment variables (not committed)
-├── .env.example                  # Example environment file
-├── .gitignore                    # Git ignore rules
-└── .github/
-    └── workflows/
-        └── market-movers.yml     # GitHub Actions workflow
-```
+Contributions are welcome! Feel free to:
+- Report bugs
+- Suggest features
+- Submit pull requests
 
-## GitHub Secrets Summary
+## 📄 License
 
-| Secret | Required | Description |
-|--------|----------|-------------|
-| `RESEND_API_KEY` | ✅ Yes | Your Resend API key for sending emails |
-| `EMAIL_TO` | ✅ Yes | Recipient email(s), comma-separated for multiple |
+MIT License - feel free to use this for your own projects!
 
-## Notes
+---
 
-- **Data Source:** Yahoo Finance via `yfinance` library (no API key needed)
-- **Email Service:** Resend (3,000 free emails/month - you need ~22/month max)
-- **No API rate limits:** Unlike Alpha Vantage, yfinance has no daily limits
-- **Resend FROM address:** Uses `onboarding@resend.dev` on free tier
-
-## Example Email
-
-The email includes:
-- 📈 S&P 500 Market Movers header with date
-- 🟢 Top 20 Gainers table (Symbol, Price, Change %, Volume)
-- 🔴 Top 20 Losers table (Symbol, Price, Change %, Volume)
-- Data source footer
-
-## License
-
-MIT
+Made with ❤️ for stock market enthusiasts

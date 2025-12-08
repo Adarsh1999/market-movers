@@ -1,21 +1,31 @@
-name: Market Movers Email
+name: Update Market Movers Website
 
 on:
   schedule:
     # Weekdays: Runs at 4:30 PM ET (21:30 UTC) Monday-Friday
     # Market closes at 4 PM ET, giving 30 min buffer for data to update
     - cron: '30 21 * * 1-5'
-    
-    # Weekend: Runs Saturday at 9 AM ET (14:00 UTC)
-    # Sends weekly summary of the entire trading week
-    - cron: '0 14 * * 6'
   
   # Allow manual trigger for testing
   workflow_dispatch:
 
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
-  send-market-report:
+  build-and-deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     
     steps:
       - name: Checkout repository
@@ -27,12 +37,19 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests python-dotenv yfinance
+        run: pip install yfinance
 
-      - name: Run market movers script
-        env:
-          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          EMAIL_FROM: "Market Movers <onboarding@resend.dev>"
-        run: python market_movers.py
+      - name: Generate static site
+        run: python generate_site.py
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
