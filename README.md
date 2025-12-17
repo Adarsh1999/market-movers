@@ -17,14 +17,14 @@ A beautiful, auto-updating website that displays daily S&P 500 top gainers and l
 
 ## 🚀 Live Demo
 
-Visit: `https://YOUR-USERNAME.github.io/market-movers/`
+Visit: **https://adarsh1999.github.io/market-movers/**
 
 ## 🛠️ Setup
 
 ### 1. Fork or Clone This Repository
 
 ```bash
-git clone https://github.com/YOUR-USERNAME/market-movers.git
+git clone https://github.com/Adarsh1999/market-movers.git
 cd market-movers
 ```
 
@@ -40,7 +40,7 @@ cd market-movers
 2. Click **"Update Market Movers Website"**
 3. Click **"Run workflow"** → **"Run workflow"**
 
-The site will be live at `https://YOUR-USERNAME.github.io/market-movers/` within a few minutes!
+The site will be live at `https://adarsh1999.github.io/market-movers/` within a few minutes!
 
 ## 📅 Schedule
 

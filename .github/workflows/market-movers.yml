@@ -1,6 +1,18 @@
 name: Update Market Movers Website
 
 on:
+  # Trigger on push to main branch (CI/CD)
+  push:
+    branches:
+      - main
+      - master
+  
+  # Trigger on pull requests for testing
+  pull_request:
+    branches:
+      - main
+      - master
+
   schedule:
     # Weekdays: Runs at 4:30 PM ET (21:30 UTC) Monday-Friday
     # Market closes at 4 PM ET, giving 30 min buffer for data to update

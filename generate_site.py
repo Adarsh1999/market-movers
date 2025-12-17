@@ -1131,7 +1131,7 @@ def generate_html(
             <p>Data source: Yahoo Finance | S&P 500 Index</p>
             <p style="margin-top: 0.5rem;">Auto-updated after market close (Mon–Fri) + weekly refresh (Sat)</p>
             <p style="margin-top: 1rem;">
-                <a href="https://github.com" target="_blank">View on GitHub</a>
+                <a href="https://github.com/Adarsh1999/market-movers" target="_blank">View on GitHub</a>
             </p>
         </footer>
     </div>
