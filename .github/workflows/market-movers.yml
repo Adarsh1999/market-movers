@@ -5,6 +5,10 @@ on:
     # Weekdays: Runs at 4:30 PM ET (21:30 UTC) Monday-Friday
     # Market closes at 4 PM ET, giving 30 min buffer for data to update
     - cron: '30 21 * * 1-5'
+
+    # Weekend: Runs Saturday at 9 AM ET (14:00 UTC)
+    # Refreshes the weekly (5 trading days) view
+    - cron: '0 14 * * 6'
   
   # Allow manual trigger for testing
   workflow_dispatch:

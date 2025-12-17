@@ -6,6 +6,7 @@ A beautiful, auto-updating website that displays daily S&P 500 top gainers and l
 
 - 🟢 **Top 20 Gainers** - Stocks with highest daily gains
 - 🔴 **Top 20 Losers** - Stocks with biggest daily losses
+- 🗓️ **Weekly Tab (5D)** - Last 5 trading days performance
 - 📊 **Market Summary** - Quick overview of market sentiment
 - 📥 **CSV Downloads** - Export data for your own analysis
 - 📋 **Copy to Clipboard** - Quick data sharing
@@ -45,20 +46,20 @@ The site will be live at `https://YOUR-USERNAME.github.io/market-movers/` within
 
 The website automatically updates:
 - **Time:** 4:30 PM ET (21:30 UTC)
-- **Days:** Monday through Friday
+- **Days:** Monday through Friday (daily) + Saturday 9:00 AM ET (weekly refresh)
 - **Why:** Market closes at 4 PM ET, giving 30 minutes for data to settle
 
 ## 🏗️ How It Works
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│              GitHub Actions (4:30 PM ET, Mon-Fri)           │
+│              GitHub Actions (Daily + Weekly Refresh)        │
 ├─────────────────────────────────────────────────────────────┤
 │                                                             │
 │   1. Fetch S&P 500 data from Yahoo Finance (yfinance)       │
-│   2. Calculate top 20 gainers and losers                    │
-│   3. Generate static HTML with embedded data                │
-│   4. Create downloadable CSV files                          │
+│   2. Calculate top 20 daily + weekly gainers/losers         │
+│   3. Generate static HTML with a Daily/Weekly tab switch    │
+│   4. Create downloadable CSV files (daily + weekly)         │
 │   5. Deploy to GitHub Pages                                 │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
@@ -99,9 +100,12 @@ After running, the `dist/` folder contains:
 | File | Description |
 |------|-------------|
 | `index.html` | Main website |
-| `data/gainers.csv` | Top 20 gainers in CSV format |
-| `data/losers.csv` | Top 20 losers in CSV format |
-| `data/all_stocks.csv` | All S&P 500 stocks sorted by performance |
+| `data/daily/gainers.csv` | Top 20 daily gainers |
+| `data/daily/losers.csv` | Top 20 daily losers |
+| `data/daily/all_stocks.csv` | All S&P 500 stocks sorted by daily performance |
+| `data/weekly/gainers.csv` | Top 20 weekly gainers (last 5 trading days) |
+| `data/weekly/losers.csv` | Top 20 weekly losers (last 5 trading days) |
+| `data/weekly/all_stocks.csv` | All S&P 500 stocks sorted by weekly performance |
 | `data/data.json` | JSON data for programmatic access |
 
 ## 💰 Cost
@@ -121,7 +125,7 @@ Want daily email reports instead? Check out the [`email-approach`](../../tree/em
 
 - **Provider:** Yahoo Finance via `yfinance` library
 - **Coverage:** All S&P 500 stocks (~500 companies)
-- **Update Frequency:** Daily (weekdays only)
+- **Update Frequency:** Daily (Mon–Fri) + weekly refresh (Sat)
 - **No API key required!**
 
 ## 🤝 Contributing

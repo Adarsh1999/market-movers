@@ -7,7 +7,8 @@ Generates a beautiful static website with daily market data
 import os
 import json
 import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone, date
+from zoneinfo import ZoneInfo
 import warnings
 
 # S&P 500 tickers (comprehensive list)
@@ -62,57 +63,129 @@ SP500_TICKERS = [
 ]
 
 
-def fetch_sp500_data():
-    """Fetch stock data for all S&P 500 stocks using yfinance"""
-    print(f"Fetching data for {len(SP500_TICKERS)} S&P 500 stocks...")
-    
-    tickers_str = ' '.join(SP500_TICKERS)
-    
+def download_sp500_history(period: str = "10d"):
+    """Download recent history for all S&P 500 stocks using yfinance.
+
+    We download once and derive both daily + weekly datasets from the same data.
+    """
+    print(f"Downloading {period} of data for {len(SP500_TICKERS)} S&P 500 stocks...")
+    tickers_str = " ".join(SP500_TICKERS)
+
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        data = yf.download(tickers_str, period='2d', progress=False, threads=True, auto_adjust=True, ignore_tz=True)
-    
+        return yf.download(
+            tickers_str,
+            period=period,
+            progress=False,
+            threads=True,
+            auto_adjust=True,
+            ignore_tz=True,
+        )
+
+
+def build_daily_dataset(data):
+    """Build daily dataset from downloaded history (last 2 closes)."""
     results = []
-    
+
     for ticker in SP500_TICKERS:
         try:
-            if len(SP500_TICKERS) > 1:
-                close_prices = data['Close'][ticker]
-            else:
-                close_prices = data['Close']
-            
-            close_prices = close_prices.dropna()
-            
+            close_prices = data["Close"][ticker].dropna()
             if len(close_prices) < 2:
                 continue
-            
-            prev_close = close_prices.iloc[-2]
-            current_close = close_prices.iloc[-1]
-            
+
+            prev_close = float(close_prices.iloc[-2])
+            current_close = float(close_prices.iloc[-1])
             if prev_close == 0 or current_close == 0:
                 continue
-            
+
             change = current_close - prev_close
             change_pct = (change / prev_close) * 100
-            
-            if len(SP500_TICKERS) > 1:
-                volume = data['Volume'][ticker].iloc[-1]
-            else:
-                volume = data['Volume'].iloc[-1]
-            
-            results.append({
-                'ticker': ticker,
-                'price': round(float(current_close), 2),
-                'prev_close': round(float(prev_close), 2),
-                'change': round(float(change), 2),
-                'change_pct': round(float(change_pct), 2),
-                'volume': int(volume) if volume > 0 else 0
-            })
+
+            volume_series = data["Volume"][ticker].dropna()
+            volume = int(volume_series.iloc[-1]) if len(volume_series) > 0 else 0
+
+            results.append(
+                {
+                    "ticker": ticker,
+                    "price": round(current_close, 2),
+                    "prev_close": round(prev_close, 2),
+                    "change": round(change, 2),
+                    "change_pct": round(change_pct, 2),
+                    "volume": volume if volume > 0 else 0,
+                }
+            )
         except Exception:
             continue
-    
-    print(f"Successfully fetched data for {len(results)} stocks")
-    return results
+
+    dates = list(getattr(data, "index", []))
+    meta = {
+        "mode": "daily",
+        "trading_days_available": len(dates),
+    }
+    if len(dates) >= 2:
+        meta["start_date"] = dates[-2].date().isoformat()
+        meta["end_date"] = dates[-1].date().isoformat()
+    elif len(dates) == 1:
+        meta["end_date"] = dates[-1].date().isoformat()
+
+    print(f"Built daily dataset for {len(results)} stocks")
+    return results, meta
+
+
+def build_weekly_dataset(data, window: int = 5):
+    """Build weekly dataset from downloaded history (last N trading days)."""
+    results = []
+
+    for ticker in SP500_TICKERS:
+        try:
+            close_prices = data["Close"][ticker].dropna()
+            if len(close_prices) < 2:
+                continue
+
+            trading_days = close_prices.tail(window)
+            if len(trading_days) < 2:
+                continue
+
+            start_price = float(trading_days.iloc[0])
+            end_price = float(trading_days.iloc[-1])
+            if start_price == 0 or end_price == 0:
+                continue
+
+            change = end_price - start_price
+            change_pct = (change / start_price) * 100
+
+            volume_series = data["Volume"][ticker].dropna().tail(window)
+            avg_volume = int(volume_series.mean()) if len(volume_series) > 0 else 0
+
+            results.append(
+                {
+                    "ticker": ticker,
+                    "start_price": round(start_price, 2),
+                    "end_price": round(end_price, 2),
+                    "change": round(change, 2),
+                    "change_pct": round(change_pct, 2),
+                    "avg_volume": avg_volume if avg_volume > 0 else 0,
+                    "days": int(len(trading_days)),
+                }
+            )
+        except Exception:
+            continue
+
+    dates = list(getattr(data, "index", []))
+    meta = {
+        "mode": "weekly",
+        "window_trading_days": window,
+        "trading_days_available": len(dates),
+    }
+    if len(dates) >= window:
+        meta["start_date"] = dates[-window].date().isoformat()
+        meta["end_date"] = dates[-1].date().isoformat()
+    elif len(dates) >= 2:
+        meta["start_date"] = dates[0].date().isoformat()
+        meta["end_date"] = dates[-1].date().isoformat()
+
+    print(f"Built weekly dataset for {len(results)} stocks")
+    return results, meta
 
 
 def get_top_movers(stocks, limit=20):
@@ -126,8 +199,8 @@ def get_top_movers(stocks, limit=20):
     return gainers, losers
 
 
-def generate_csv(stocks, filename):
-    """Generate CSV file for download"""
+def generate_daily_csv(stocks, filename):
+    """Generate daily CSV file for download (Excel-friendly)."""
     import csv
     
     with open(filename, 'w', newline='') as f:
@@ -146,17 +219,79 @@ def generate_csv(stocks, filename):
     print(f"Generated {filename}")
 
 
-def generate_html(gainers, losers, all_stocks):
-    """Generate the main HTML page"""
-    
-    today = datetime.now()
-    date_str = today.strftime("%B %d, %Y")
-    time_str = today.strftime("%I:%M %p ET")
-    
-    # Generate table rows for gainers
-    gainers_rows = ""
-    for i, stock in enumerate(gainers, 1):
-        gainers_rows += f'''
+def generate_weekly_csv(stocks, filename):
+    """Generate weekly CSV file for download (Excel-friendly)."""
+    import csv
+
+    with open(filename, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(
+            [
+                "Rank",
+                "Symbol",
+                "Week Start ($)",
+                "Week End ($)",
+                "Change ($)",
+                "Change (%)",
+                "Avg Volume",
+                "Days",
+            ]
+        )
+        for i, stock in enumerate(stocks, 1):
+            writer.writerow(
+                [
+                    i,
+                    stock["ticker"],
+                    stock["start_price"],
+                    stock["end_price"],
+                    stock["change"],
+                    f"{stock['change_pct']:+.2f}%",
+                    stock.get("avg_volume", 0),
+                    stock.get("days", 0),
+                ]
+            )
+    print(f"Generated {filename}")
+
+
+def _pretty_date(iso_date: str, fmt: str = "%b %d, %Y") -> str:
+    try:
+        if not iso_date:
+            return ""
+        return date.fromisoformat(iso_date).strftime(fmt)
+    except Exception:
+        return iso_date
+
+
+def generate_html(
+    daily_gainers,
+    daily_losers,
+    daily_all_stocks,
+    daily_meta,
+    weekly_gainers,
+    weekly_losers,
+    weekly_all_stocks,
+    weekly_meta,
+    generated_at_et: datetime,
+):
+    """Generate the main HTML page (Daily + Weekly views)."""
+
+    generated_str = generated_at_et.strftime("%b %d, %Y %I:%M %p %Z")
+
+    daily_end_str = _pretty_date(daily_meta.get("end_date", ""))
+    weekly_start_str = _pretty_date(weekly_meta.get("start_date", ""))
+    weekly_end_str = _pretty_date(weekly_meta.get("end_date", ""))
+
+    daily_update_label = f"Daily data: {daily_end_str} • Generated: {generated_str}"
+    weekly_update_label = f"Weekly (5D): {weekly_start_str} - {weekly_end_str} • Generated: {generated_str}"
+
+    daily_subtitle = "Daily Top Gainers & Losers"
+    weekly_subtitle = "Weekly Movers (Last 5 Trading Days)"
+    default_view = "weekly" if (generated_at_et.weekday() >= 5 and len(weekly_all_stocks) > 0) else "daily"
+
+    # Generate table rows for DAILY gainers
+    daily_gainers_rows = ""
+    for i, stock in enumerate(daily_gainers, 1):
+        daily_gainers_rows += f'''
             <tr>
                 <td class="rank">{i}</td>
                 <td class="symbol">{stock['ticker']}</td>
@@ -165,11 +300,11 @@ def generate_html(gainers, losers, all_stocks):
                 <td class="change-pct positive">+{stock['change_pct']:.2f}%</td>
                 <td class="volume">{stock['volume']:,}</td>
             </tr>'''
-    
-    # Generate table rows for losers
-    losers_rows = ""
-    for i, stock in enumerate(losers, 1):
-        losers_rows += f'''
+
+    # Generate table rows for DAILY losers
+    daily_losers_rows = ""
+    for i, stock in enumerate(daily_losers, 1):
+        daily_losers_rows += f'''
             <tr>
                 <td class="rank">{i}</td>
                 <td class="symbol">{stock['ticker']}</td>
@@ -178,25 +313,68 @@ def generate_html(gainers, losers, all_stocks):
                 <td class="change-pct negative">{stock['change_pct']:.2f}%</td>
                 <td class="volume">{stock['volume']:,}</td>
             </tr>'''
-    
-    # Calculate market summary
-    total_gainers = len([s for s in all_stocks if s['change_pct'] > 0])
-    total_losers = len([s for s in all_stocks if s['change_pct'] < 0])
-    total_unchanged = len(all_stocks) - total_gainers - total_losers
-    avg_change = sum(s['change_pct'] for s in all_stocks) / len(all_stocks) if all_stocks else 0
-    
+
+    # Generate table rows for WEEKLY gainers
+    weekly_gainers_rows = ""
+    for i, stock in enumerate(weekly_gainers, 1):
+        weekly_gainers_rows += f'''
+            <tr>
+                <td class="rank">{i}</td>
+                <td class="symbol">{stock['ticker']}</td>
+                <td class="price">${stock['start_price']:.2f}</td>
+                <td class="price">${stock['end_price']:.2f}</td>
+                <td class="change positive">+${stock['change']:.2f}</td>
+                <td class="change-pct positive">+{stock['change_pct']:.2f}%</td>
+                <td class="volume">{stock.get('avg_volume', 0):,}</td>
+            </tr>'''
+
+    # Generate table rows for WEEKLY losers
+    weekly_losers_rows = ""
+    for i, stock in enumerate(weekly_losers, 1):
+        weekly_losers_rows += f'''
+            <tr>
+                <td class="rank">{i}</td>
+                <td class="symbol">{stock['ticker']}</td>
+                <td class="price">${stock['start_price']:.2f}</td>
+                <td class="price">${stock['end_price']:.2f}</td>
+                <td class="change negative">${stock['change']:.2f}</td>
+                <td class="change-pct negative">{stock['change_pct']:.2f}%</td>
+                <td class="volume">{stock.get('avg_volume', 0):,}</td>
+            </tr>'''
+
+    # Calculate market summary (DAILY)
+    daily_total_gainers = len([s for s in daily_all_stocks if s["change_pct"] > 0])
+    daily_total_losers = len([s for s in daily_all_stocks if s["change_pct"] < 0])
+    daily_total_unchanged = len(daily_all_stocks) - daily_total_gainers - daily_total_losers
+    daily_avg_change = (
+        sum(s["change_pct"] for s in daily_all_stocks) / len(daily_all_stocks) if daily_all_stocks else 0
+    )
+    daily_avg_class = "gainers" if daily_avg_change >= 0 else "losers"
+
+    # Calculate market summary (WEEKLY)
+    weekly_total_gainers = len([s for s in weekly_all_stocks if s["change_pct"] > 0])
+    weekly_total_losers = len([s for s in weekly_all_stocks if s["change_pct"] < 0])
+    weekly_total_unchanged = len(weekly_all_stocks) - weekly_total_gainers - weekly_total_losers
+    weekly_avg_change = (
+        sum(s["change_pct"] for s in weekly_all_stocks) / len(weekly_all_stocks) if weekly_all_stocks else 0
+    )
+    weekly_avg_class = "gainers" if weekly_avg_change >= 0 else "losers"
+
     # Convert data to JSON for JavaScript
-    all_stocks_json = json.dumps(all_stocks)
-    gainers_json = json.dumps(gainers)
-    losers_json = json.dumps(losers)
+    daily_all_stocks_json = json.dumps(daily_all_stocks)
+    daily_gainers_json = json.dumps(daily_gainers)
+    daily_losers_json = json.dumps(daily_losers)
+    weekly_all_stocks_json = json.dumps(weekly_all_stocks)
+    weekly_gainers_json = json.dumps(weekly_gainers)
+    weekly_losers_json = json.dumps(weekly_losers)
     
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>S&P 500 Market Movers | Daily Stock Performance</title>
-    <meta name="description" content="Daily S&P 500 top gainers and losers. Track the biggest market movers with real-time data and downloadable reports.">
+    <title>S&P 500 Market Movers | Daily & Weekly Performance</title>
+    <meta name="description" content="Daily and weekly S&P 500 top gainers and losers. Track the biggest market movers with downloadable reports.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -320,6 +498,50 @@ def generate_html(gainers, losers, all_stocks):
         @keyframes blink {{
             0%, 100% {{ opacity: 1; }}
             50% {{ opacity: 0.3; }}
+        }}
+
+        /* Tabs */
+        .tabs {{
+            margin-top: 1.25rem;
+            display: flex;
+            justify-content: center;
+        }}
+
+        .tab-group {{
+            display: inline-flex;
+            gap: 0.25rem;
+            padding: 0.25rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+        }}
+
+        .tab-btn {{
+            padding: 0.65rem 1.1rem;
+            border-radius: 999px;
+            background: transparent;
+            border: 1px solid transparent;
+            color: var(--text-secondary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }}
+
+        .tab-btn:hover {{
+            background: var(--bg-hover);
+            color: var(--text-primary);
+        }}
+
+        .tab-btn.active {{
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            color: var(--text-primary);
+            box-shadow: 0 8px 30px rgba(0, 170, 255, 0.2);
+        }}
+
+        .hidden {{
+            display: none !important;
         }}
 
         /* Market Summary */
@@ -681,28 +903,53 @@ def generate_html(gainers, losers, all_stocks):
                 <span class="logo-icon">📈</span>
             </div>
             <h1>S&P 500 Market Movers</h1>
-            <p class="subtitle">Daily Top Gainers & Losers</p>
+            <p class="subtitle" id="subtitle">{daily_subtitle}</p>
             <div class="update-time">
                 <span class="live-dot"></span>
-                <span>Updated: {date_str} at {time_str}</span>
+                <span id="updateText">{daily_update_label}</span>
+            </div>
+            <div class="tabs">
+                <div class="tab-group">
+                    <button id="dailyTab" class="tab-btn active" onclick="switchView('daily')">Daily</button>
+                    <button id="weeklyTab" class="tab-btn" onclick="switchView('weekly')">Weekly (5D)</button>
+                </div>
             </div>
         </header>
 
-        <section class="market-summary slide-up delay-1">
+        <section class="market-summary slide-up delay-1" id="dailySummary">
             <div class="summary-card gainers">
-                <div class="summary-value">{total_gainers}</div>
+                <div class="summary-value">{daily_total_gainers}</div>
                 <div class="summary-label">Stocks Up</div>
             </div>
             <div class="summary-card losers">
-                <div class="summary-value">{total_losers}</div>
+                <div class="summary-value">{daily_total_losers}</div>
                 <div class="summary-label">Stocks Down</div>
             </div>
             <div class="summary-card neutral">
-                <div class="summary-value">{total_unchanged}</div>
+                <div class="summary-value">{daily_total_unchanged}</div>
                 <div class="summary-label">Unchanged</div>
             </div>
-            <div class="summary-card {"gainers" if avg_change >= 0 else "losers"}">
-                <div class="summary-value">{avg_change:+.2f}%</div>
+            <div class="summary-card {daily_avg_class}">
+                <div class="summary-value">{daily_avg_change:+.2f}%</div>
+                <div class="summary-label">Avg Change</div>
+            </div>
+        </section>
+
+        <section class="market-summary slide-up delay-1 hidden" id="weeklySummary">
+            <div class="summary-card gainers">
+                <div class="summary-value">{weekly_total_gainers}</div>
+                <div class="summary-label">Stocks Up</div>
+            </div>
+            <div class="summary-card losers">
+                <div class="summary-value">{weekly_total_losers}</div>
+                <div class="summary-label">Stocks Down</div>
+            </div>
+            <div class="summary-card neutral">
+                <div class="summary-value">{weekly_total_unchanged}</div>
+                <div class="summary-label">Unchanged</div>
+            </div>
+            <div class="summary-card {weekly_avg_class}">
+                <div class="summary-value">{weekly_avg_change:+.2f}%</div>
                 <div class="summary-label">Avg Change</div>
             </div>
         </section>
@@ -716,26 +963,26 @@ def generate_html(gainers, losers, all_stocks):
             </div>
         </section>
 
-        <section class="download-section slide-up delay-2">
-            <a href="data/gainers.csv" download class="download-btn primary">
+        <section class="download-section slide-up delay-2" id="dailyDownloads">
+            <a href="data/daily/gainers.csv" download class="download-btn primary">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
                 Download Gainers (CSV)
             </a>
-            <a href="data/losers.csv" download class="download-btn primary">
+            <a href="data/daily/losers.csv" download class="download-btn primary">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
                 Download Losers (CSV)
             </a>
-            <a href="data/all_stocks.csv" download class="download-btn">
+            <a href="data/daily/all_stocks.csv" download class="download-btn">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
                 Download All S&P 500 (CSV)
             </a>
-            <button onclick="copyTableData()" class="download-btn">
+            <button onclick="copyTableData(event, 'daily')" class="download-btn">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
@@ -743,7 +990,34 @@ def generate_html(gainers, losers, all_stocks):
             </button>
         </section>
 
-        <div class="tables-container">
+        <section class="download-section slide-up delay-2 hidden" id="weeklyDownloads">
+            <a href="data/weekly/gainers.csv" download class="download-btn primary">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download Weekly Gainers (CSV)
+            </a>
+            <a href="data/weekly/losers.csv" download class="download-btn primary">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download Weekly Losers (CSV)
+            </a>
+            <a href="data/weekly/all_stocks.csv" download class="download-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Download Weekly All S&P 500 (CSV)
+            </a>
+            <button onclick="copyTableData(event, 'weekly')" class="download-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                Copy to Clipboard
+            </button>
+        </section>
+
+        <div class="tables-container" id="dailyTables">
             <div class="table-card slide-up delay-3">
                 <div class="table-header">
                     <h2 class="table-title gainers">
@@ -752,7 +1026,7 @@ def generate_html(gainers, losers, all_stocks):
                     </h2>
                 </div>
                 <div class="table-wrapper">
-                    <table id="gainersTable">
+                    <table id="dailyGainersTable">
                         <thead>
                             <tr>
                                 <th>#</th>
@@ -764,7 +1038,7 @@ def generate_html(gainers, losers, all_stocks):
                             </tr>
                         </thead>
                         <tbody>
-                            {gainers_rows}
+                            {daily_gainers_rows}
                         </tbody>
                     </table>
                 </div>
@@ -778,7 +1052,7 @@ def generate_html(gainers, losers, all_stocks):
                     </h2>
                 </div>
                 <div class="table-wrapper">
-                    <table id="losersTable">
+                    <table id="dailyLosersTable">
                         <thead>
                             <tr>
                                 <th>#</th>
@@ -790,7 +1064,63 @@ def generate_html(gainers, losers, all_stocks):
                             </tr>
                         </thead>
                         <tbody>
-                            {losers_rows}
+                            {daily_losers_rows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="tables-container hidden" id="weeklyTables">
+            <div class="table-card slide-up delay-3">
+                <div class="table-header">
+                    <h2 class="table-title gainers">
+                        <span class="table-icon">🟢</span>
+                        Top 20 Weekly Gainers
+                    </h2>
+                </div>
+                <div class="table-wrapper">
+                    <table id="weeklyGainersTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Symbol</th>
+                                <th>Week Start</th>
+                                <th>Week End</th>
+                                <th>Change</th>
+                                <th>Change %</th>
+                                <th>Avg Volume</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {weekly_gainers_rows}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="table-card slide-up delay-4">
+                <div class="table-header">
+                    <h2 class="table-title losers">
+                        <span class="table-icon">🔴</span>
+                        Top 20 Weekly Losers
+                    </h2>
+                </div>
+                <div class="table-wrapper">
+                    <table id="weeklyLosersTable">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Symbol</th>
+                                <th>Week Start</th>
+                                <th>Week End</th>
+                                <th>Change</th>
+                                <th>Change %</th>
+                                <th>Avg Volume</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {weekly_losers_rows}
                         </tbody>
                     </table>
                 </div>
@@ -799,7 +1129,7 @@ def generate_html(gainers, losers, all_stocks):
 
         <footer>
             <p>Data source: Yahoo Finance | S&P 500 Index</p>
-            <p style="margin-top: 0.5rem;">Auto-updated daily after market close (4:30 PM ET)</p>
+            <p style="margin-top: 0.5rem;">Auto-updated after market close (Mon–Fri) + weekly refresh (Sat)</p>
             <p style="margin-top: 1rem;">
                 <a href="https://github.com" target="_blank">View on GitHub</a>
             </p>
@@ -808,49 +1138,100 @@ def generate_html(gainers, losers, all_stocks):
 
     <script>
         // Store data for filtering and export
-        const allStocks = {all_stocks_json};
-        const gainers = {gainers_json};
-        const losers = {losers_json};
+        const dailyAllStocks = {daily_all_stocks_json};
+        const dailyGainers = {daily_gainers_json};
+        const dailyLosers = {daily_losers_json};
+
+        const weeklyAllStocks = {weekly_all_stocks_json};
+        const weeklyGainers = {weekly_gainers_json};
+        const weeklyLosers = {weekly_losers_json};
+
+        const DAILY_SUBTITLE = "{daily_subtitle}";
+        const WEEKLY_SUBTITLE = "{weekly_subtitle}";
+        const DAILY_UPDATE_TEXT = "{daily_update_label}";
+        const WEEKLY_UPDATE_TEXT = "{weekly_update_label}";
+        const DEFAULT_VIEW = "{default_view}";
+
+        function switchView(view) {{
+            const isWeekly = view === 'weekly';
+
+            document.getElementById('dailySummary').classList.toggle('hidden', isWeekly);
+            document.getElementById('weeklySummary').classList.toggle('hidden', !isWeekly);
+            document.getElementById('dailyDownloads').classList.toggle('hidden', isWeekly);
+            document.getElementById('weeklyDownloads').classList.toggle('hidden', !isWeekly);
+            document.getElementById('dailyTables').classList.toggle('hidden', isWeekly);
+            document.getElementById('weeklyTables').classList.toggle('hidden', !isWeekly);
+
+            document.getElementById('dailyTab').classList.toggle('active', !isWeekly);
+            document.getElementById('weeklyTab').classList.toggle('active', isWeekly);
+
+            document.getElementById('subtitle').textContent = isWeekly ? WEEKLY_SUBTITLE : DAILY_SUBTITLE;
+            document.getElementById('updateText').textContent = isWeekly ? WEEKLY_UPDATE_TEXT : DAILY_UPDATE_TEXT;
+
+            filterTables();
+        }}
 
         function filterTables() {{
             const searchTerm = document.getElementById('searchInput').value.toUpperCase();
-            
-            // Filter gainers table
-            const gainersRows = document.querySelectorAll('#gainersTable tbody tr');
-            gainersRows.forEach(row => {{
-                const symbol = row.querySelector('.symbol').textContent;
-                row.style.display = symbol.includes(searchTerm) ? '' : 'none';
-            }});
-            
-            // Filter losers table
-            const losersRows = document.querySelectorAll('#losersTable tbody tr');
-            losersRows.forEach(row => {{
-                const symbol = row.querySelector('.symbol').textContent;
-                row.style.display = symbol.includes(searchTerm) ? '' : 'none';
+            const tableIds = ['dailyGainersTable', 'dailyLosersTable', 'weeklyGainersTable', 'weeklyLosersTable'];
+
+            tableIds.forEach(id => {{
+                const rows = document.querySelectorAll('#' + id + ' tbody tr');
+                rows.forEach(row => {{
+                    const symbolEl = row.querySelector('.symbol');
+                    const symbol = symbolEl ? symbolEl.textContent.toUpperCase() : '';
+                    row.style.display = symbol.includes(searchTerm) ? '' : 'none';
+                }});
             }});
         }}
 
-        function copyTableData() {{
-            let text = 'S&P 500 Market Movers - {date_str}\\n\\n';
-            text += 'TOP GAINERS\\n';
-            text += 'Symbol\\tPrice\\tChange\\tChange%\\tVolume\\n';
-            gainers.forEach((s, i) => {{
-                text += `${{s.ticker}}\\t$${{s.price}}\\t${{s.change >= 0 ? '+' : ''}}$${{s.change}}\\t${{s.change_pct >= 0 ? '+' : ''}}${{s.change_pct}}%\\t${{s.volume.toLocaleString()}}\\n`;
-            }});
-            
-            text += '\\nTOP LOSERS\\n';
-            text += 'Symbol\\tPrice\\tChange\\tChange%\\tVolume\\n';
-            losers.forEach((s, i) => {{
-                text += `${{s.ticker}}\\t$${{s.price}}\\t$${{s.change}}\\t${{s.change_pct}}%\\t${{s.volume.toLocaleString()}}\\n`;
-            }});
+        function copyTableData(evt, view) {{
+            const isWeekly = view === 'weekly';
+            const gainers = isWeekly ? weeklyGainers : dailyGainers;
+            const losers = isWeekly ? weeklyLosers : dailyLosers;
+            const updateText = isWeekly ? WEEKLY_UPDATE_TEXT : DAILY_UPDATE_TEXT;
+
+            let text = 'S&P 500 Market Movers - ' + (isWeekly ? 'WEEKLY (5D)' : 'DAILY') + '\\n';
+            text += updateText + '\\n\\n';
+
+            if (!isWeekly) {{
+                text += 'TOP GAINERS\\n';
+                text += 'Symbol\\tPrice\\tChange\\tChange%\\tVolume\\n';
+                gainers.forEach(s => {{
+                    text += s.ticker + '\\t$' + s.price + '\\t' + (s.change >= 0 ? '+' : '') + '$' + s.change + '\\t' + (s.change_pct >= 0 ? '+' : '') + s.change_pct + '%\\t' + (s.volume || 0).toLocaleString() + '\\n';
+                }});
+
+                text += '\\nTOP LOSERS\\n';
+                text += 'Symbol\\tPrice\\tChange\\tChange%\\tVolume\\n';
+                losers.forEach(s => {{
+                    text += s.ticker + '\\t$' + s.price + '\\t$' + s.change + '\\t' + s.change_pct + '%\\t' + (s.volume || 0).toLocaleString() + '\\n';
+                }});
+            }} else {{
+                text += 'TOP WEEKLY GAINERS\\n';
+                text += 'Symbol\\tWeekStart\\tWeekEnd\\tChange\\tChange%\\tAvgVol\\n';
+                gainers.forEach(s => {{
+                    text += s.ticker + '\\t$' + s.start_price + '\\t$' + s.end_price + '\\t' + (s.change >= 0 ? '+' : '') + '$' + s.change + '\\t' + (s.change_pct >= 0 ? '+' : '') + s.change_pct + '%\\t' + (s.avg_volume || 0).toLocaleString() + '\\n';
+                }});
+
+                text += '\\nTOP WEEKLY LOSERS\\n';
+                text += 'Symbol\\tWeekStart\\tWeekEnd\\tChange\\tChange%\\tAvgVol\\n';
+                losers.forEach(s => {{
+                    text += s.ticker + '\\t$' + s.start_price + '\\t$' + s.end_price + '\\t$' + s.change + '\\t' + s.change_pct + '%\\t' + (s.avg_volume || 0).toLocaleString() + '\\n';
+                }});
+            }}
 
             navigator.clipboard.writeText(text).then(() => {{
-                const btn = event.target.closest('.download-btn');
+                const btn = evt.currentTarget;
                 const originalText = btn.innerHTML;
                 btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" style="width:20px;height:20px"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg> Copied!';
                 setTimeout(() => {{ btn.innerHTML = originalText; }}, 2000);
             }});
         }}
+
+        // Default view: daily on weekdays, weekly on weekends (when available)
+        document.addEventListener('DOMContentLoaded', () => {{
+            switchView(DEFAULT_VIEW === 'weekly' ? 'weekly' : 'daily');
+        }});
     </script>
 </body>
 </html>'''
@@ -867,32 +1248,59 @@ def main():
     # Create output directory
     os.makedirs('dist', exist_ok=True)
     os.makedirs('dist/data', exist_ok=True)
+    os.makedirs('dist/data/daily', exist_ok=True)
+    os.makedirs('dist/data/weekly', exist_ok=True)
+
+    # Use US/Eastern for display (market context)
+    eastern = ZoneInfo("America/New_York")
+    generated_at_et = datetime.now(timezone.utc).astimezone(eastern)
     
-    # Fetch data
-    print("\n📊 Fetching S&P 500 market data...")
-    all_stocks = fetch_sp500_data()
-    
-    if not all_stocks:
-        raise ValueError("No stock data retrieved")
-    
-    # Get top movers
-    print("\n📈 Calculating top gainers and losers...")
-    gainers, losers = get_top_movers(all_stocks, limit=20)
-    
-    print(f"   Found {len(gainers)} gainers and {len(losers)} losers")
-    
+    # Download data once (enough for weekly + daily)
+    print("\n📊 Downloading S&P 500 market data...")
+    data = download_sp500_history(period="10d")
+
+    # Build DAILY dataset
+    print("\n📅 Building DAILY dataset...")
+    daily_all_stocks, daily_meta = build_daily_dataset(data)
+    if not daily_all_stocks:
+        raise ValueError("No DAILY stock data retrieved")
+
+    daily_gainers, daily_losers = get_top_movers(daily_all_stocks, limit=20)
+    daily_sorted_all = sorted(daily_all_stocks, key=lambda x: x["change_pct"], reverse=True)
+    print(f"   Daily: {len(daily_gainers)} gainers, {len(daily_losers)} losers")
+
+    # Build WEEKLY dataset (last 5 trading days)
+    print("\n🗓️  Building WEEKLY (5D) dataset...")
+    weekly_all_stocks, weekly_meta = build_weekly_dataset(data, window=5)
+    weekly_gainers, weekly_losers = get_top_movers(weekly_all_stocks, limit=20) if weekly_all_stocks else ([], [])
+    weekly_sorted_all = (
+        sorted(weekly_all_stocks, key=lambda x: x["change_pct"], reverse=True) if weekly_all_stocks else []
+    )
+    print(f"   Weekly: {len(weekly_gainers)} gainers, {len(weekly_losers)} losers")
+
     # Generate CSV files
     print("\n📁 Generating CSV files...")
-    generate_csv(gainers, 'dist/data/gainers.csv')
-    generate_csv(losers, 'dist/data/losers.csv')
-    
-    # Generate all stocks CSV
-    sorted_all = sorted(all_stocks, key=lambda x: x['change_pct'], reverse=True)
-    generate_csv(sorted_all, 'dist/data/all_stocks.csv')
-    
+    generate_daily_csv(daily_gainers, "dist/data/daily/gainers.csv")
+    generate_daily_csv(daily_losers, "dist/data/daily/losers.csv")
+    generate_daily_csv(daily_sorted_all, "dist/data/daily/all_stocks.csv")
+
+    generate_weekly_csv(weekly_gainers, "dist/data/weekly/gainers.csv")
+    generate_weekly_csv(weekly_losers, "dist/data/weekly/losers.csv")
+    generate_weekly_csv(weekly_sorted_all, "dist/data/weekly/all_stocks.csv")
+
     # Generate HTML
     print("\n🎨 Generating HTML page...")
-    html = generate_html(gainers, losers, all_stocks)
+    html = generate_html(
+        daily_gainers,
+        daily_losers,
+        daily_all_stocks,
+        daily_meta,
+        weekly_gainers,
+        weekly_losers,
+        weekly_all_stocks,
+        weekly_meta,
+        generated_at_et,
+    )
     
     with open('dist/index.html', 'w', encoding='utf-8') as f:
         f.write(html)
@@ -901,21 +1309,38 @@ def main():
     # Save JSON data for API-like access
     print("\n💾 Generating JSON data...")
     with open('dist/data/data.json', 'w') as f:
-        json.dump({
-            'updated': datetime.now().isoformat(),
-            'gainers': gainers,
-            'losers': losers,
-            'all_stocks': sorted_all
-        }, f, indent=2)
+        json.dump(
+            {
+                "generated_at": generated_at_et.isoformat(),
+                "timezone": "America/New_York",
+                "daily": {
+                    "meta": daily_meta,
+                    "gainers": daily_gainers,
+                    "losers": daily_losers,
+                    "all_stocks": daily_sorted_all,
+                },
+                "weekly": {
+                    "meta": weekly_meta,
+                    "gainers": weekly_gainers,
+                    "losers": weekly_losers,
+                    "all_stocks": weekly_sorted_all,
+                },
+            },
+            f,
+            indent=2,
+        )
     print("   Generated dist/data/data.json")
     
     print("\n" + "=" * 60)
     print("✅ Site generated successfully!")
     print(f"   📁 Output: dist/")
     print(f"   📄 index.html - Main page")
-    print(f"   📊 data/gainers.csv - Top gainers")
-    print(f"   📊 data/losers.csv - Top losers")
-    print(f"   📊 data/all_stocks.csv - All S&P 500")
+    print(f"   📊 data/daily/gainers.csv - Daily top gainers")
+    print(f"   📊 data/daily/losers.csv - Daily top losers")
+    print(f"   📊 data/daily/all_stocks.csv - All S&P 500 (daily)")
+    print(f"   📊 data/weekly/gainers.csv - Weekly top gainers")
+    print(f"   📊 data/weekly/losers.csv - Weekly top losers")
+    print(f"   📊 data/weekly/all_stocks.csv - All S&P 500 (weekly)")
     print(f"   📊 data/data.json - JSON API")
     print("=" * 60)
 

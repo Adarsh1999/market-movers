@@ -58,10 +58,15 @@ After running `python generate_site.py`, you'll see:
 dist/
 ├── index.html          ← Main website (open this!)
 ├── data/
-    ├── gainers.csv     ← Top 20 gainers
-    ├── losers.csv      ← Top 20 losers
-    ├── all_stocks.csv  ← All S&P 500 stocks
-    └── data.json       ← JSON API
+    ├── data.json       ← JSON API (daily + weekly)
+    ├── daily/
+    │   ├── gainers.csv     ← Top 20 daily gainers
+    │   ├── losers.csv      ← Top 20 daily losers
+    │   └── all_stocks.csv  ← All S&P 500 stocks (daily)
+    └── weekly/
+        ├── gainers.csv     ← Top 20 weekly gainers (last 5 trading days)
+        ├── losers.csv      ← Top 20 weekly losers (last 5 trading days)
+        └── all_stocks.csv  ← All S&P 500 stocks (weekly)
 ```
 
 ---
