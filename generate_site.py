@@ -7,6 +7,7 @@ Generates a beautiful static website with daily market data
 import os
 import json
 import yfinance as yf
+import pandas as pd
 from datetime import datetime, timedelta, timezone, date
 from zoneinfo import ZoneInfo
 import warnings
@@ -66,6 +67,11 @@ SP500_TICKERS = [
     'ZBH', 'ZBRA', 'ZTS',
 ]
 
+CHART_PERIOD = "1y"
+CHART_DAY_BARS = 60
+CHART_WEEK_BARS = 26
+CHART_MONTH_BARS = 12
+
 
 
 def download_sp500_history(period: str = "10d"):
@@ -87,6 +93,125 @@ def download_sp500_history(period: str = "10d"):
             ignore_tz=True,
         )
 
+
+def download_chart_history(tickers, period: str = CHART_PERIOD):
+    """Download OHLC history for charting the selected tickers."""
+    if not tickers:
+        return None
+
+    print(f"Downloading {period} of chart data for {len(tickers)} tickers...")
+    tickers_str = " ".join(tickers)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return yf.download(
+            tickers_str,
+            period=period,
+            interval="1d",
+            progress=False,
+            threads=True,
+            auto_adjust=True,
+            ignore_tz=True,
+        )
+
+
+def _series_for_field(data, field: str, ticker: str):
+    try:
+        return data[field][ticker].dropna()
+    except Exception:
+        try:
+            return data[field].dropna()
+        except Exception:
+            return None
+
+
+def _build_ohlc_frame(data, ticker: str) -> pd.DataFrame | None:
+    open_series = _series_for_field(data, "Open", ticker)
+    high_series = _series_for_field(data, "High", ticker)
+    low_series = _series_for_field(data, "Low", ticker)
+    close_series = _series_for_field(data, "Close", ticker)
+
+    if open_series is None or high_series is None or low_series is None or close_series is None:
+        return None
+
+    frame = pd.DataFrame(
+        {
+            "open": open_series,
+            "high": high_series,
+            "low": low_series,
+            "close": close_series,
+        }
+    )
+    frame = frame.dropna()
+    frame = frame.sort_index()
+    return frame
+
+
+def _resample_ohlc(frame: pd.DataFrame, rule: str) -> pd.DataFrame:
+    resampled = frame.resample(rule).agg(
+        {
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+        }
+    )
+    return resampled.dropna(subset=["open", "close"])
+
+
+def _format_candles(frame: pd.DataFrame, max_bars: int) -> list[dict]:
+    if frame.empty:
+        return []
+
+    frame = frame.tail(max_bars)
+    candles = []
+    for idx, row in frame.iterrows():
+        candle_time = datetime.combine(idx.date(), datetime.min.time(), tzinfo=timezone.utc)
+        candles.append(
+            {
+                "time": int(candle_time.timestamp()),
+                "open": float(row["open"]),
+                "high": float(row["high"]),
+                "low": float(row["low"]),
+                "close": float(row["close"]),
+            }
+        )
+    return candles
+
+
+def build_chart_payloads(data, tickers) -> dict:
+    payloads = {}
+    if data is None:
+        return payloads
+
+    for ticker in tickers:
+        frame = _build_ohlc_frame(data, ticker)
+        if frame is None or frame.empty:
+            continue
+
+        daily = _format_candles(frame, CHART_DAY_BARS)
+        weekly = _format_candles(_resample_ohlc(frame, "W-FRI"), CHART_WEEK_BARS)
+        monthly = _format_candles(_resample_ohlc(frame, "M"), CHART_MONTH_BARS)
+
+        payloads[ticker] = {
+            "ticker": ticker,
+            "day": daily,
+            "week": weekly,
+            "month": monthly,
+        }
+
+    return payloads
+
+
+def write_chart_payloads(payloads: dict, output_dir: str):
+    if not payloads:
+        return
+
+    os.makedirs(output_dir, exist_ok=True)
+    for ticker, payload in payloads.items():
+        path = os.path.join(output_dir, f"{ticker}.json")
+        with open(path, "w") as f:
+            json.dump(payload, f)
 
 def build_daily_dataset(data):
     """Build daily dataset from downloaded history (last 2 closes)."""
@@ -314,7 +439,7 @@ def generate_html(
     daily_gainers_rows = ""
     for i, stock in enumerate(daily_gainers, 1):
         daily_gainers_rows += f'''
-            <tr>
+            <tr class="clickable-row" data-ticker="{stock['ticker']}" tabindex="0" role="button" aria-label="Open chart for {stock['ticker']}">
                 <td class="rank">{i}</td>
                 <td class="symbol">{stock['ticker']}</td>
                 <td class="price">${stock['price']:.2f}</td>
@@ -327,7 +452,7 @@ def generate_html(
     daily_losers_rows = ""
     for i, stock in enumerate(daily_losers, 1):
         daily_losers_rows += f'''
-            <tr>
+            <tr class="clickable-row" data-ticker="{stock['ticker']}" tabindex="0" role="button" aria-label="Open chart for {stock['ticker']}">
                 <td class="rank">{i}</td>
                 <td class="symbol">{stock['ticker']}</td>
                 <td class="price">${stock['price']:.2f}</td>
@@ -340,7 +465,7 @@ def generate_html(
     weekly_gainers_rows = ""
     for i, stock in enumerate(weekly_gainers, 1):
         weekly_gainers_rows += f'''
-            <tr>
+            <tr class="clickable-row" data-ticker="{stock['ticker']}" tabindex="0" role="button" aria-label="Open chart for {stock['ticker']}">
                 <td class="rank">{i}</td>
                 <td class="symbol">{stock['ticker']}</td>
                 <td class="price">${stock['start_price']:.2f}</td>
@@ -354,7 +479,7 @@ def generate_html(
     weekly_losers_rows = ""
     for i, stock in enumerate(weekly_losers, 1):
         weekly_losers_rows += f'''
-            <tr>
+            <tr class="clickable-row" data-ticker="{stock['ticker']}" tabindex="0" role="button" aria-label="Open chart for {stock['ticker']}">
                 <td class="rank">{i}</td>
                 <td class="symbol">{stock['ticker']}</td>
                 <td class="price">${stock['start_price']:.2f}</td>
@@ -755,6 +880,15 @@ def generate_html(
             border-bottom: none;
         }}
 
+        .clickable-row {{
+            cursor: pointer;
+        }}
+
+        .clickable-row:focus-visible td {{
+            background: var(--bg-hover);
+            box-shadow: inset 0 0 0 1px rgba(0, 170, 255, 0.6);
+        }}
+
         .rank {{
             text-align: center;
             color: var(--text-muted);
@@ -834,6 +968,133 @@ def generate_html(
             color: var(--text-muted);
         }}
 
+        /* Chart Modal */
+        .chart-modal {{
+            position: fixed;
+            inset: 0;
+            background: rgba(10, 10, 15, 0.86);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            z-index: 1000;
+        }}
+
+        .chart-panel {{
+            width: min(960px, 100%);
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+            overflow: hidden;
+        }}
+
+        .chart-header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }}
+
+        .chart-title {{
+            font-size: 1.25rem;
+            font-weight: 600;
+        }}
+
+        .chart-subtitle {{
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }}
+
+        .chart-close {{
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }}
+
+        .chart-close:hover {{
+            border-color: var(--accent-blue);
+            transform: translateY(-1px);
+        }}
+
+        .chart-controls {{
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 1rem 1.5rem;
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+        }}
+
+        .chart-tabs {{
+            display: inline-flex;
+            gap: 0.4rem;
+            padding: 0.25rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+        }}
+
+        .chart-tab {{
+            padding: 0.45rem 0.9rem;
+            border-radius: 999px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--text-secondary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }}
+
+        .chart-tab:hover {{
+            color: var(--text-primary);
+            background: var(--bg-hover);
+        }}
+
+        .chart-tab.active {{
+            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
+            color: var(--text-primary);
+            box-shadow: 0 6px 20px rgba(0, 170, 255, 0.2);
+        }}
+
+        .chart-note {{
+            color: var(--text-muted);
+            font-size: 0.85rem;
+        }}
+
+        .chart-body {{
+            position: relative;
+            padding: 1rem 1.5rem 1.5rem;
+        }}
+
+        #chartContainer {{
+            width: 100%;
+            height: 360px;
+        }}
+
+        .chart-state {{
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(10, 10, 15, 0.6);
+            color: var(--text-secondary);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.95rem;
+            z-index: 2;
+        }}
+
         /* Footer */
         footer {{
             text-align: center;
@@ -884,6 +1145,15 @@ def generate_html(
             .download-section {{
                 flex-direction: column;
                 align-items: stretch;
+            }}
+
+            .chart-controls {{
+                flex-direction: column;
+                align-items: flex-start;
+            }}
+
+            #chartContainer {{
+                height: 280px;
             }}
         }}
 
@@ -1158,6 +1428,31 @@ def generate_html(
         </footer>
     </div>
 
+    <div class="chart-modal hidden" id="chartModal">
+        <div class="chart-panel">
+            <div class="chart-header">
+                <div>
+                    <div class="chart-title" id="chartTitle">Chart</div>
+                    <div class="chart-subtitle" id="chartSubtitle">Candlestick view</div>
+                </div>
+                <button class="chart-close" id="chartClose" aria-label="Close chart">X</button>
+            </div>
+            <div class="chart-controls">
+                <div class="chart-tabs">
+                    <button class="chart-tab active" data-range="day">1D</button>
+                    <button class="chart-tab" data-range="week">1W</button>
+                    <button class="chart-tab" data-range="month">1M</button>
+                </div>
+                <div class="chart-note">Daily candles aggregated into weekly/monthly views.</div>
+            </div>
+            <div class="chart-body">
+                <div id="chartContainer"></div>
+                <div class="chart-state hidden" id="chartState">Loading chart...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
     <script>
         // Store data for filtering and export
         const dailyAllStocks = {daily_all_stocks_json};
@@ -1173,6 +1468,20 @@ def generate_html(
         const DAILY_UPDATE_TEXT = "{daily_update_label}";
         const WEEKLY_UPDATE_TEXT = "{weekly_update_label}";
         const DEFAULT_VIEW = "{default_view}";
+        const chartCache = {{}};
+
+        const chartModal = document.getElementById('chartModal');
+        const chartTitle = document.getElementById('chartTitle');
+        const chartSubtitle = document.getElementById('chartSubtitle');
+        const chartState = document.getElementById('chartState');
+        const chartContainer = document.getElementById('chartContainer');
+        const chartTabs = Array.from(document.querySelectorAll('.chart-tab'));
+        const chartClose = document.getElementById('chartClose');
+
+        let chartInstance = null;
+        let candleSeries = null;
+        let activeChartTicker = null;
+        let activeChartRange = 'day';
 
         function switchView(view) {{
             const isWeekly = view === 'weekly';
@@ -1191,6 +1500,227 @@ def generate_html(
             document.getElementById('updateText').textContent = isWeekly ? WEEKLY_UPDATE_TEXT : DAILY_UPDATE_TEXT;
 
             filterTables();
+        }}
+
+        function setChartState(message) {{
+            chartState.textContent = message;
+            chartState.classList.remove('hidden');
+        }}
+
+        function clearChartState() {{
+            chartState.classList.add('hidden');
+        }}
+
+        function ensureChart() {{
+            if (typeof LightweightCharts === 'undefined') {{
+                setChartState('Chart library unavailable.');
+                return false;
+            }}
+
+            try {{
+                if (!chartInstance) {{
+                    // Use fallback dimensions if container not yet laid out
+                    const width = chartContainer.clientWidth || 800;
+                    const height = chartContainer.clientHeight || 360;
+
+                    chartInstance = LightweightCharts.createChart(chartContainer, {{
+                        layout: {{
+                            background: {{ type: 'solid', color: 'transparent' }},
+                            textColor: '#cfd3dc',
+                            fontFamily: 'JetBrains Mono, monospace',
+                        }},
+                        grid: {{
+                            vertLines: {{ color: 'rgba(255, 255, 255, 0.06)' }},
+                            horzLines: {{ color: 'rgba(255, 255, 255, 0.06)' }},
+                        }},
+                        rightPriceScale: {{ borderVisible: false }},
+                        timeScale: {{ borderVisible: false }},
+                        width: width,
+                        height: height,
+                    }});
+
+                    candleSeries = chartInstance.addCandlestickSeries({{
+                        upColor: '#00ff88',
+                        downColor: '#ff3366',
+                        borderUpColor: '#00cc6a',
+                        borderDownColor: '#cc2952',
+                        wickUpColor: '#00cc6a',
+                        wickDownColor: '#cc2952',
+                    }});
+                }} else {{
+                    // Update dimensions for existing chart
+                    const width = chartContainer.clientWidth || 800;
+                    const height = chartContainer.clientHeight || 360;
+                    chartInstance.applyOptions({{ width: width, height: height }});
+                }}
+
+                return true;
+            }} catch (e) {{
+                console.error('Chart creation error:', e);
+                setChartState('Chart initialization failed.');
+                return false;
+            }}
+        }}
+
+        function normalizeChartData(series) {{
+            const sanitized = [];
+            series.forEach(bar => {{
+                if (!bar) {{
+                    return;
+                }}
+
+                let timeValue = bar.time;
+                if (typeof timeValue === 'string') {{
+                    const parts = timeValue.split('-').map(Number);
+                    timeValue = Date.UTC(parts[0], parts[1] - 1, parts[2]) / 1000;
+                }}
+
+                const open = Number(bar.open);
+                const high = Number(bar.high);
+                const low = Number(bar.low);
+                const close = Number(bar.close);
+
+                if (!Number.isFinite(timeValue) || !Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) {{
+                    return;
+                }}
+
+                const maxBody = Math.max(open, close);
+                const minBody = Math.min(open, close);
+                const fixedHigh = Math.max(high, maxBody);
+                const fixedLow = Math.min(low, minBody);
+
+                sanitized.push({{
+                    time: timeValue,
+                    open,
+                    high: fixedHigh,
+                    low: fixedLow,
+                    close,
+                }});
+            }});
+
+            sanitized.sort((a, b) => a.time - b.time);
+            const deduped = [];
+            let lastTime = null;
+            sanitized.forEach(bar => {{
+                if (bar.time === lastTime) {{
+                    deduped[deduped.length - 1] = bar;
+                    return;
+                }}
+                deduped.push(bar);
+                lastTime = bar.time;
+            }});
+
+            return deduped;
+        }}
+
+        function renderChartData(payload, range) {{
+            if (!candleSeries || !chartInstance) {{
+                console.error('Chart not initialized');
+                setChartState('Chart not initialized.');
+                return;
+            }}
+
+            const series = payload && payload[range] ? payload[range] : [];
+            console.log(`Rendering ${{range}} data: ${{series.length}} candles`);
+
+            if (!series.length) {{
+                setChartState('No ' + range + ' data available.');
+                candleSeries.setData([]);
+                return;
+            }}
+
+            clearChartState();
+            const normalized = normalizeChartData(series);
+            console.log(`Normalized data: ${{normalized.length}} candles`);
+
+            if (!normalized.length) {{
+                setChartState('No valid chart data after normalization.');
+                candleSeries.setData([]);
+                return;
+            }}
+
+            candleSeries.setData(normalized);
+            chartInstance.timeScale().fitContent();
+        }}
+
+        function loadChartData(ticker) {{
+            if (chartCache[ticker]) {{
+                return Promise.resolve(chartCache[ticker]);
+            }}
+
+            setChartState('Loading chart data...');
+            return fetch(`data/charts/${{encodeURIComponent(ticker)}}.json`)
+                .then(response => {{
+                    if (!response.ok) {{
+                        throw new Error('Chart not found');
+                    }}
+                    return response.json();
+                }})
+                .then(payload => {{
+                    chartCache[ticker] = payload;
+                    return payload;
+                }});
+        }}
+
+        function setActiveChartRange(range) {{
+            activeChartRange = range;
+            chartTabs.forEach(tab => {{
+                tab.classList.toggle('active', tab.dataset.range === range);
+            }});
+
+            if (activeChartTicker && chartCache[activeChartTicker]) {{
+                renderChartData(chartCache[activeChartTicker], activeChartRange);
+            }}
+        }}
+
+        function openChart(ticker) {{
+            activeChartTicker = ticker;
+            chartTitle.textContent = `${{ticker}} Candlesticks`;
+            chartSubtitle.textContent = 'Daily, weekly, and monthly candles';
+            chartModal.classList.remove('hidden');
+            setChartState('Loading chart...');
+
+            // Use requestAnimationFrame to ensure DOM is laid out before creating chart
+            requestAnimationFrame(() => {{
+                if (!ensureChart()) {{
+                    return;
+                }}
+                setActiveChartRange(activeChartRange);
+                loadChartData(ticker)
+                    .then(payload => {{
+                        try {{
+                            renderChartData(payload, activeChartRange);
+                        }} catch (renderErr) {{
+                            console.error('Chart render error:', renderErr);
+                            setChartState('Chart render failed: ' + renderErr.message);
+                        }}
+                    }})
+                    .catch(error => {{
+                        console.error('Chart load error:', error);
+                        setChartState('Chart data unavailable: ' + error.message);
+                    }});
+            }});
+        }}
+
+        function closeChart() {{
+            chartModal.classList.add('hidden');
+        }}
+
+        function bindChartRows() {{
+            const rows = document.querySelectorAll('.clickable-row');
+            rows.forEach(row => {{
+                const ticker = row.dataset.ticker;
+                if (!ticker) {{
+                    return;
+                }}
+                row.addEventListener('click', () => openChart(ticker));
+                row.addEventListener('keydown', event => {{
+                    if (event.key === 'Enter' || event.key === ' ') {{
+                        event.preventDefault();
+                        openChart(ticker);
+                    }}
+                }});
+            }});
         }}
 
         function filterTables() {{
@@ -1253,6 +1783,36 @@ def generate_html(
         // Default view: daily on weekdays, weekly on weekends (when available)
         document.addEventListener('DOMContentLoaded', () => {{
             switchView(DEFAULT_VIEW === 'weekly' ? 'weekly' : 'daily');
+            bindChartRows();
+        }});
+
+        chartTabs.forEach(tab => {{
+            tab.addEventListener('click', () => {{
+                setActiveChartRange(tab.dataset.range);
+            }});
+        }});
+
+        chartClose.addEventListener('click', closeChart);
+
+        chartModal.addEventListener('click', event => {{
+            if (event.target === chartModal) {{
+                closeChart();
+            }}
+        }});
+
+        document.addEventListener('keydown', event => {{
+            if (event.key === 'Escape' && !chartModal.classList.contains('hidden')) {{
+                closeChart();
+            }}
+        }});
+
+        window.addEventListener('resize', () => {{
+            if (chartInstance) {{
+                chartInstance.applyOptions({{
+                    width: chartContainer.clientWidth,
+                    height: chartContainer.clientHeight,
+                }});
+            }}
         }});
     </script>
 </body>
@@ -1272,6 +1832,7 @@ def main():
     os.makedirs('dist/data', exist_ok=True)
     os.makedirs('dist/data/daily', exist_ok=True)
     os.makedirs('dist/data/weekly', exist_ok=True)
+    os.makedirs('dist/data/charts', exist_ok=True)
 
     # Use US/Eastern for display (market context)
     eastern = ZoneInfo("America/New_York")
@@ -1304,6 +1865,18 @@ def main():
         sorted(weekly_all_stocks, key=lambda x: x["change_pct"], reverse=True) if weekly_all_stocks else []
     )
     print(f"   Weekly: {len(weekly_gainers)} gainers, {len(weekly_losers)} losers")
+
+    # Build chart data for top movers
+    chart_tickers = sorted(
+        {
+            stock["ticker"]
+            for stock in (daily_gainers + daily_losers + weekly_gainers + weekly_losers)
+        }
+    )
+    chart_history = download_chart_history(chart_tickers, period=CHART_PERIOD)
+    chart_payloads = build_chart_payloads(chart_history, chart_tickers)
+    write_chart_payloads(chart_payloads, "dist/data/charts")
+    print(f"   Charts: {len(chart_payloads)} tickers")
 
     # Generate CSV files
     print("\n📁 Generating CSV files...")

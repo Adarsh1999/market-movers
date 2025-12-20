@@ -11,6 +11,7 @@ A beautiful, auto-updating website that displays daily S&P 500 top gainers and l
 - 📥 **CSV Downloads** - Export data for your own analysis
 - 📋 **Copy to Clipboard** - Quick data sharing
 - 🔍 **Search** - Find specific stocks instantly
+- 📈 **Candlestick Charts** - 1D/1W/1M charts for top movers
 - 📱 **Mobile Responsive** - Works on all devices
 - 🌙 **Dark Theme** - Easy on the eyes
 - ⏰ **Auto-Updates** - Refreshes daily via GitHub Actions
@@ -106,6 +107,7 @@ After running, the `dist/` folder contains:
 | `data/weekly/gainers.csv` | Top 20 weekly gainers (completed Mon-Fri week) |
 | `data/weekly/losers.csv` | Top 20 weekly losers (completed Mon-Fri week) |
 | `data/weekly/all_stocks.csv` | All S&P 500 stocks sorted by weekly performance |
+| `data/charts/*.json` | Candlestick chart data for top movers |
 | `data/data.json` | JSON data for programmatic access |
 
 ## 💰 Cost

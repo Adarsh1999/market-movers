@@ -63,6 +63,8 @@ dist/
     │   ├── gainers.csv     ← Top 20 daily gainers
     │   ├── losers.csv      ← Top 20 daily losers
     │   └── all_stocks.csv  ← All S&P 500 stocks (daily)
+    ├── charts/
+    │   └── AAPL.json       ← Candlestick chart data (top movers only)
     └── weekly/
         ├── gainers.csv     ← Top 20 weekly gainers (completed Mon-Fri week)
         ├── losers.csv      ← Top 20 weekly losers (completed Mon-Fri week)
