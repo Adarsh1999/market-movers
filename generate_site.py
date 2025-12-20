@@ -13,54 +13,59 @@ import warnings
 
 # S&P 500 tickers (comprehensive list)
 SP500_TICKERS = [
-    'MMM', 'AOS', 'ABT', 'ABBV', 'ACN', 'ADM', 'ADBE', 'ADP', 'AES', 'AFL',
-    'A', 'APD', 'AKAM', 'ALB', 'ARE', 'ALGN', 'ALLE', 'LNT', 'ALL', 'GOOGL',
-    'GOOG', 'MO', 'AMZN', 'AMCR', 'AMD', 'AEE', 'AAL', 'AEP', 'AXP', 'AIG',
-    'AMT', 'AWK', 'AMP', 'AME', 'AMGN', 'APH', 'ADI', 'AON', 'APA',
-    'AAPL', 'AMAT', 'APTV', 'ANET', 'AJG', 'AIZ', 'T', 'ATO', 'ADSK', 'AZO',
-    'AVB', 'AVY', 'AXON', 'BKR', 'BALL', 'BAC', 'BBWI', 'BAX', 'BDX', 'BRK-B',
-    'BBY', 'BIO', 'TECH', 'BIIB', 'BLK', 'BK', 'BA', 'BKNG', 'BWA', 'BSX',
-    'BMY', 'AVGO', 'BR', 'BRO', 'BLDR', 'BG', 'CDNS', 'CZR', 'CPT', 'CPB',
-    'COF', 'CAH', 'KMX', 'CCL', 'CARR', 'CAT', 'CBOE', 'CBRE', 'CDW', 'CE',
-    'CNC', 'CNP', 'DAY', 'CF', 'CRL', 'SCHW', 'CHTR', 'CVX', 'CMG', 'CB',
-    'CHD', 'CI', 'CINF', 'CTAS', 'CSCO', 'C', 'CFG', 'CLX', 'CME', 'CMS',
-    'KO', 'CTSH', 'CL', 'CMCSA', 'CMA', 'CAG', 'COP', 'ED', 'STZ', 'CEG',
-    'COO', 'CPRT', 'GLW', 'CTVA', 'CSGP', 'COST', 'CTRA', 'CCI', 'CSX', 'CMI',
-    'CVS', 'DHI', 'DHR', 'DRI', 'DVA', 'DE', 'DAL', 'DXCM', 'FANG',
-    'DLR', 'DG', 'DLTR', 'D', 'DPZ', 'DOV', 'DOW', 'DTE', 'DUK',
-    'DD', 'EMN', 'ETN', 'EBAY', 'ECL', 'EIX', 'EW', 'EA', 'ELV', 'LLY',
-    'EMR', 'ENPH', 'ENTG', 'EOG', 'EPAM', 'EQT', 'EFX', 'EQIX', 'EQR', 'ESS',
-    'EL', 'ETSY', 'EG', 'EVRG', 'ES', 'EXC', 'EXPE', 'XOM',
-    'FFIV', 'FDS', 'FICO', 'FAST', 'FRT', 'FDX', 'FITB',
-    'FSLR', 'FE', 'FIS', 'FI', 'FMC', 'F', 'FTNT', 'FTV', 'FOXA', 'FOX', 'BEN', 'FCX',
-    'GRMN', 'IT', 'GEHC', 'GEN', 'GNRC', 'GD', 'GE', 'GIS', 'GM', 'GPC',
-    'GILD', 'GL', 'GPN', 'GS', 'HAL', 'HIG', 'HAS', 'HCA', 'HSIC', 'HSY',
-    'HPE', 'HLT', 'HOLX', 'HD', 'HON', 'HRL', 'HST', 'HWM', 'HPQ', 'HUBB', 'HUM',
-    'HBAN', 'HII', 'IBM', 'IEX', 'IDXX', 'ITW', 'ILMN', 'INCY', 'IR', 'PODD', 'INTC',
-    'ICE', 'IFF', 'IP', 'IPG', 'INTU', 'ISRG', 'IVZ', 'INVH', 'IQV', 'IRM',
-    'JBHT', 'JBL', 'JKHY', 'J', 'JNJ', 'JCI', 'JPM', 'K', 'KVUE', 'KDP', 'KEY',
-    'KEYS', 'KMB', 'KIM', 'KMI', 'KLAC', 'KHC', 'KR', 'LHX', 'LH', 'LRCX',
-    'LW', 'LVS', 'LDOS', 'LEN', 'LIN', 'LYV', 'LKQ', 'LMT', 'L', 'LOW',
-    'LULU', 'LYB', 'MTB', 'MPC', 'MKTX', 'MAR', 'MMC', 'MLM', 'MAS', 'MA', 'MTCH', 'MKC', 'MCD', 'MCK', 'MDT', 'MRK',
-    'META', 'MET', 'MTD', 'MGM', 'MCHP', 'MU', 'MSFT', 'MAA', 'MRNA', 'MHK',
-    'MOH', 'TAP', 'MDLZ', 'MPWR', 'MNST', 'MCO', 'MS', 'MOS', 'MSI',
-    'MSCI', 'NDAQ', 'NTAP', 'NFLX', 'NEM', 'NWSA', 'NWS', 'NEE', 'NKE', 'NI', 'NDSN',
-    'NSC', 'NTRS', 'NOC', 'NCLH', 'NRG', 'NUE', 'NVDA', 'NVR', 'NXPI', 'ORLY', 'OXY',
-    'ODFL', 'OMC', 'ON', 'OKE', 'ORCL', 'OTIS', 'PCAR', 'PKG', 'PANW', 'PH',
-    'PAYX', 'PAYC', 'PYPL', 'PNR', 'PEP', 'PFE', 'PCG', 'PM', 'PSX', 'PNW',
-    'PNC', 'POOL', 'PPG', 'PPL', 'PFG', 'PG', 'PGR', 'PLD', 'PRU',
-    'PEG', 'PTC', 'PSA', 'PHM', 'QRVO', 'PWR', 'QCOM', 'DGX', 'RL', 'RJF',
-    'RTX', 'O', 'REG', 'REGN', 'RF', 'RSG', 'RMD', 'RVTY', 'RHI', 'ROK',
-    'ROL', 'ROP', 'ROST', 'RCL', 'SPGI', 'CRM', 'SBAC', 'SLB', 'STX', 'SRE',
-    'NOW', 'SHW', 'SPG', 'SWKS', 'SJM', 'SNA', 'SO', 'LUV',
-    'SWK', 'SBUX', 'STT', 'STLD', 'STE', 'SYK', 'SYF', 'SNPS', 'SYY',
-    'TMUS', 'TROW', 'TTWO', 'TPR', 'TGT', 'TEL', 'TDY', 'TFX', 'TER', 'TSLA', 'TXN', 'TXT', 'TMO',
-    'TJX', 'TSCO', 'TT', 'TDG', 'TRV', 'TRMB', 'TFC', 'TYL', 'TSN', 'USB',
-    'UDR', 'ULTA', 'UNP', 'UAL', 'UPS', 'URI', 'UNH', 'UHS', 'VLO', 'VTR', 'VRSN', 'VRSK',
-    'VZ', 'VRTX', 'VFC', 'VTRS', 'VICI', 'V', 'VMC', 'WAB', 'WMT', 'WBD', 'DIS',
-    'WM', 'WAT', 'WEC', 'WFC', 'WELL', 'WST', 'WDC', 'WY', 'WHR', 'WMB', 'WTW', 'GWW',
-    'WYNN', 'XEL', 'XYL', 'YUM', 'ZBRA', 'ZBH', 'ZION', 'ZTS', 'SOLV'
+    'A', 'AAPL', 'ABBV', 'ABNB', 'ABT', 'ACGL', 'ACN', 'ADBE', 'ADI', 'ADM',
+    'ADP', 'ADSK', 'AEE', 'AEP', 'AES', 'AFL', 'AIG', 'AIZ', 'AJG', 'AKAM',
+    'ALB', 'ALGN', 'ALL', 'ALLE', 'AMAT', 'AMCR', 'AMD', 'AME', 'AMGN', 'AMP',
+    'AMT', 'AMZN', 'ANET', 'AON', 'AOS', 'APA', 'APD', 'APH', 'APO', 'APP',
+    'APTV', 'ARE', 'ARES', 'ATO', 'AVB', 'AVGO', 'AVY', 'AWK', 'AXON', 'AXP',
+    'AZO', 'BA', 'BAC', 'BALL', 'BAX', 'BBY', 'BDX', 'BEN', 'BF-B', 'BG',
+    'BIIB', 'BK', 'BKNG', 'BKR', 'BLDR', 'BLK', 'BMY', 'BR', 'BRK-B', 'BRO',
+    'BSX', 'BX', 'BXP', 'C', 'CAG', 'CAH', 'CARR', 'CAT', 'CB', 'CBOE',
+    'CBRE', 'CCI', 'CCL', 'CDNS', 'CDW', 'CEG', 'CF', 'CFG', 'CHD', 'CHRW',
+    'CHTR', 'CI', 'CINF', 'CL', 'CLX', 'CMCSA', 'CME', 'CMG', 'CMI', 'CMS',
+    'CNC', 'CNP', 'COF', 'COIN', 'COO', 'COP', 'COR', 'COST', 'CPAY', 'CPB',
+    'CPRT', 'CPT', 'CRL', 'CRM', 'CRWD', 'CSCO', 'CSGP', 'CSX', 'CTAS', 'CTRA',
+    'CTSH', 'CTVA', 'CVS', 'CVX', 'D', 'DAL', 'DASH', 'DAY', 'DD', 'DDOG',
+    'DE', 'DECK', 'DELL', 'DG', 'DGX', 'DHI', 'DHR', 'DIS', 'DLR', 'DLTR',
+    'DOC', 'DOV', 'DOW', 'DPZ', 'DRI', 'DTE', 'DUK', 'DVA', 'DVN', 'DXCM',
+    'EA', 'EBAY', 'ECL', 'ED', 'EFX', 'EG', 'EIX', 'EL', 'ELV', 'EME',
+    'EMR', 'EOG', 'EPAM', 'EQIX', 'EQR', 'EQT', 'ERIE', 'ES', 'ESS', 'ETN',
+    'ETR', 'EVRG', 'EW', 'EXC', 'EXE', 'EXPD', 'EXPE', 'EXR', 'F', 'FANG',
+    'FAST', 'FCX', 'FDS', 'FDX', 'FE', 'FFIV', 'FICO', 'FIS', 'FISV', 'FITB',
+    'FOX', 'FOXA', 'FRT', 'FSLR', 'FTNT', 'FTV', 'GD', 'GDDY', 'GE', 'GEHC',
+    'GEN', 'GEV', 'GILD', 'GIS', 'GL', 'GLW', 'GM', 'GNRC', 'GOOG', 'GOOGL',
+    'GPC', 'GPN', 'GRMN', 'GS', 'GWW', 'HAL', 'HAS', 'HBAN', 'HCA', 'HD',
+    'HIG', 'HII', 'HLT', 'HOLX', 'HON', 'HOOD', 'HPE', 'HPQ', 'HRL', 'HSIC',
+    'HST', 'HSY', 'HUBB', 'HUM', 'HWM', 'IBKR', 'IBM', 'ICE', 'IDXX', 'IEX',
+    'IFF', 'INCY', 'INTC', 'INTU', 'INVH', 'IP', 'IQV', 'IR', 'IRM', 'ISRG',
+    'IT', 'ITW', 'IVZ', 'J', 'JBHT', 'JBL', 'JCI', 'JKHY', 'JNJ', 'JPM',
+    'KDP', 'KEY', 'KEYS', 'KHC', 'KIM', 'KKR', 'KLAC', 'KMB', 'KMI', 'KO',
+    'KR', 'KVUE', 'L', 'LDOS', 'LEN', 'LH', 'LHX', 'LII', 'LIN', 'LKQ',
+    'LLY', 'LMT', 'LNT', 'LOW', 'LRCX', 'LULU', 'LUV', 'LVS', 'LW', 'LYB',
+    'LYV', 'MA', 'MAA', 'MAR', 'MAS', 'MCD', 'MCHP', 'MCK', 'MCO', 'MDLZ',
+    'MDT', 'MET', 'META', 'MGM', 'MHK', 'MKC', 'MLM', 'MMC', 'MMM', 'MNST',
+    'MO', 'MOH', 'MOS', 'MPC', 'MPWR', 'MRK', 'MRNA', 'MS', 'MSCI', 'MSFT',
+    'MSI', 'MTB', 'MTCH', 'MTD', 'MU', 'NCLH', 'NDAQ', 'NDSN', 'NEE', 'NEM',
+    'NFLX', 'NI', 'NKE', 'NOC', 'NOW', 'NRG', 'NSC', 'NTAP', 'NTRS', 'NUE',
+    'NVDA', 'NVR', 'NWS', 'NWSA', 'NXPI', 'O', 'ODFL', 'OKE', 'OMC', 'ON',
+    'ORCL', 'ORLY', 'OTIS', 'OXY', 'PANW', 'PAYC', 'PAYX', 'PCAR', 'PCG', 'PEG',
+    'PEP', 'PFE', 'PFG', 'PG', 'PGR', 'PH', 'PHM', 'PKG', 'PLD', 'PLTR',
+    'PM', 'PNC', 'PNR', 'PNW', 'PODD', 'POOL', 'PPG', 'PPL', 'PRU', 'PSA',
+    'PSKY', 'PSX', 'PTC', 'PWR', 'PYPL', 'Q', 'QCOM', 'RCL', 'REG', 'REGN',
+    'RF', 'RJF', 'RL', 'RMD', 'ROK', 'ROL', 'ROP', 'ROST', 'RSG', 'RTX',
+    'RVTY', 'SBAC', 'SBUX', 'SCHW', 'SHW', 'SJM', 'SLB', 'SMCI', 'SNA', 'SNDK',
+    'SNPS', 'SO', 'SOLS', 'SOLV', 'SPG', 'SPGI', 'SRE', 'STE', 'STLD', 'STT',
+    'STX', 'STZ', 'SW', 'SWK', 'SWKS', 'SYF', 'SYK', 'SYY', 'T', 'TAP',
+    'TDG', 'TDY', 'TECH', 'TEL', 'TER', 'TFC', 'TGT', 'TJX', 'TKO', 'TMO',
+    'TMUS', 'TPL', 'TPR', 'TRGP', 'TRMB', 'TROW', 'TRV', 'TSCO', 'TSLA', 'TSN',
+    'TT', 'TTD', 'TTWO', 'TXN', 'TXT', 'TYL', 'UAL', 'UBER', 'UDR', 'UHS',
+    'ULTA', 'UNH', 'UNP', 'UPS', 'URI', 'USB', 'V', 'VICI', 'VLO', 'VLTO',
+    'VMC', 'VRSK', 'VRSN', 'VRTX', 'VST', 'VTR', 'VTRS', 'VZ', 'WAB', 'WAT',
+    'WBD', 'WDAY', 'WDC', 'WEC', 'WELL', 'WFC', 'WM', 'WMB', 'WMT', 'WRB',
+    'WSM', 'WST', 'WTW', 'WY', 'WYNN', 'XEL', 'XOM', 'XYL', 'XYZ', 'YUM',
+    'ZBH', 'ZBRA', 'ZTS',
 ]
+
 
 
 def download_sp500_history(period: str = "10d"):
@@ -132,8 +137,24 @@ def build_daily_dataset(data):
     return results, meta
 
 
-def build_weekly_dataset(data, window: int = 5):
-    """Build weekly dataset from downloaded history (last N trading days)."""
+def get_week_date_range(reference_dt: datetime) -> tuple[date, date]:
+    """Return the completed Mon-Fri range for weekly reporting."""
+    current_date = reference_dt.date()
+    weekday = current_date.weekday()  # Monday=0, Sunday=6
+    week_start = current_date - timedelta(days=weekday)
+
+    # Sat/Sun -> current week; Mon-Fri -> previous week
+    if weekday >= 5:
+        start_date = week_start
+    else:
+        start_date = week_start - timedelta(days=7)
+
+    end_date = start_date + timedelta(days=4)
+    return start_date, end_date
+
+
+def build_weekly_dataset(data, start_date: date, end_date: date):
+    """Build weekly dataset from downloaded history (Mon-Fri date range)."""
     results = []
 
     for ticker in SP500_TICKERS:
@@ -142,7 +163,9 @@ def build_weekly_dataset(data, window: int = 5):
             if len(close_prices) < 2:
                 continue
 
-            trading_days = close_prices.tail(window)
+            trading_days = close_prices[
+                (close_prices.index.date >= start_date) & (close_prices.index.date <= end_date)
+            ]
             if len(trading_days) < 2:
                 continue
 
@@ -154,7 +177,10 @@ def build_weekly_dataset(data, window: int = 5):
             change = end_price - start_price
             change_pct = (change / start_price) * 100
 
-            volume_series = data["Volume"][ticker].dropna().tail(window)
+            volume_series = data["Volume"][ticker].dropna()
+            volume_series = volume_series[
+                (volume_series.index.date >= start_date) & (volume_series.index.date <= end_date)
+            ]
             avg_volume = int(volume_series.mean()) if len(volume_series) > 0 else 0
 
             results.append(
@@ -172,17 +198,13 @@ def build_weekly_dataset(data, window: int = 5):
             continue
 
     dates = list(getattr(data, "index", []))
+    dates_in_range = [d for d in dates if start_date <= d.date() <= end_date]
     meta = {
         "mode": "weekly",
-        "window_trading_days": window,
-        "trading_days_available": len(dates),
+        "trading_days_available": len(dates_in_range),
     }
-    if len(dates) >= window:
-        meta["start_date"] = dates[-window].date().isoformat()
-        meta["end_date"] = dates[-1].date().isoformat()
-    elif len(dates) >= 2:
-        meta["start_date"] = dates[0].date().isoformat()
-        meta["end_date"] = dates[-1].date().isoformat()
+    meta["start_date"] = start_date.isoformat()
+    meta["end_date"] = end_date.isoformat()
 
     print(f"Built weekly dataset for {len(results)} stocks")
     return results, meta
@@ -282,10 +304,10 @@ def generate_html(
     weekly_end_str = _pretty_date(weekly_meta.get("end_date", ""))
 
     daily_update_label = f"Daily data: {daily_end_str} • Generated: {generated_str}"
-    weekly_update_label = f"Weekly (5D): {weekly_start_str} - {weekly_end_str} • Generated: {generated_str}"
+    weekly_update_label = f"Weekly (Mon-Fri): {weekly_start_str} - {weekly_end_str} • Generated: {generated_str}"
 
     daily_subtitle = "Daily Top Gainers & Losers"
-    weekly_subtitle = "Weekly Movers (Last 5 Trading Days)"
+    weekly_subtitle = "Weekly Movers (Mon-Fri)"
     default_view = "weekly" if (generated_at_et.weekday() >= 5 and len(weekly_all_stocks) > 0) else "daily"
 
     # Generate table rows for DAILY gainers
@@ -911,7 +933,7 @@ def generate_html(
             <div class="tabs">
                 <div class="tab-group">
                     <button id="dailyTab" class="tab-btn active" onclick="switchView('daily')">Daily</button>
-                    <button id="weeklyTab" class="tab-btn" onclick="switchView('weekly')">Weekly (5D)</button>
+                    <button id="weeklyTab" class="tab-btn" onclick="switchView('weekly')">Weekly (Mon-Fri)</button>
                 </div>
             </div>
         </header>
@@ -1191,7 +1213,7 @@ def generate_html(
             const losers = isWeekly ? weeklyLosers : dailyLosers;
             const updateText = isWeekly ? WEEKLY_UPDATE_TEXT : DAILY_UPDATE_TEXT;
 
-            let text = 'S&P 500 Market Movers - ' + (isWeekly ? 'WEEKLY (5D)' : 'DAILY') + '\\n';
+            let text = 'S&P 500 Market Movers - ' + (isWeekly ? 'WEEKLY (MON-FRI)' : 'DAILY') + '\\n';
             text += updateText + '\\n\\n';
 
             if (!isWeekly) {{
@@ -1269,9 +1291,14 @@ def main():
     daily_sorted_all = sorted(daily_all_stocks, key=lambda x: x["change_pct"], reverse=True)
     print(f"   Daily: {len(daily_gainers)} gainers, {len(daily_losers)} losers")
 
-    # Build WEEKLY dataset (last 5 trading days)
-    print("\n🗓️  Building WEEKLY (5D) dataset...")
-    weekly_all_stocks, weekly_meta = build_weekly_dataset(data, window=5)
+    # Build WEEKLY dataset (completed Mon-Fri range)
+    weekly_start_date, weekly_end_date = get_week_date_range(generated_at_et)
+    print(f"\n🗓️  Building WEEKLY (Mon-Fri) dataset... ({weekly_start_date} to {weekly_end_date})")
+    weekly_all_stocks, weekly_meta = build_weekly_dataset(
+        data,
+        start_date=weekly_start_date,
+        end_date=weekly_end_date,
+    )
     weekly_gainers, weekly_losers = get_top_movers(weekly_all_stocks, limit=20) if weekly_all_stocks else ([], [])
     weekly_sorted_all = (
         sorted(weekly_all_stocks, key=lambda x: x["change_pct"], reverse=True) if weekly_all_stocks else []
@@ -1347,4 +1374,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

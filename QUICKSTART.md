@@ -64,8 +64,8 @@ dist/
     │   ├── losers.csv      ← Top 20 daily losers
     │   └── all_stocks.csv  ← All S&P 500 stocks (daily)
     └── weekly/
-        ├── gainers.csv     ← Top 20 weekly gainers (last 5 trading days)
-        ├── losers.csv      ← Top 20 weekly losers (last 5 trading days)
+        ├── gainers.csv     ← Top 20 weekly gainers (completed Mon-Fri week)
+        ├── losers.csv      ← Top 20 weekly losers (completed Mon-Fri week)
         └── all_stocks.csv  ← All S&P 500 stocks (weekly)
 ```
 
@@ -93,4 +93,3 @@ pip install yfinance
 python -m http.server 9000
 # Then visit http://localhost:9000
 ```
-

@@ -6,7 +6,7 @@ A beautiful, auto-updating website that displays daily S&P 500 top gainers and l
 
 - 🟢 **Top 20 Gainers** - Stocks with highest daily gains
 - 🔴 **Top 20 Losers** - Stocks with biggest daily losses
-- 🗓️ **Weekly Tab (5D)** - Last 5 trading days performance
+- 🗓️ **Weekly Tab (Mon-Fri)** - Last completed week performance (Mon-Fri)
 - 📊 **Market Summary** - Quick overview of market sentiment
 - 📥 **CSV Downloads** - Export data for your own analysis
 - 📋 **Copy to Clipboard** - Quick data sharing
@@ -103,8 +103,8 @@ After running, the `dist/` folder contains:
 | `data/daily/gainers.csv` | Top 20 daily gainers |
 | `data/daily/losers.csv` | Top 20 daily losers |
 | `data/daily/all_stocks.csv` | All S&P 500 stocks sorted by daily performance |
-| `data/weekly/gainers.csv` | Top 20 weekly gainers (last 5 trading days) |
-| `data/weekly/losers.csv` | Top 20 weekly losers (last 5 trading days) |
+| `data/weekly/gainers.csv` | Top 20 weekly gainers (completed Mon-Fri week) |
+| `data/weekly/losers.csv` | Top 20 weekly losers (completed Mon-Fri week) |
 | `data/weekly/all_stocks.csv` | All S&P 500 stocks sorted by weekly performance |
 | `data/data.json` | JSON data for programmatic access |
 
