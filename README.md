@@ -90,7 +90,7 @@ python generate_site.py
 
 # View the site
 cd dist
-python -m http.server 8000
+python -m http.server 9000
 # Open http://localhost:8000 in your browser
 ```
 

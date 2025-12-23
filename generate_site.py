@@ -72,6 +72,12 @@ CHART_DAY_BARS = 60
 CHART_WEEK_BARS = 26
 CHART_MONTH_BARS = 12
 
+# Intraday chart settings
+CHART_15M_BARS = 160   # ~5 trading days of 15-min bars
+CHART_1H_BARS = 195    # ~30 trading days of 1-hour bars
+CHART_2H_BARS = 98     # ~30 trading days of 2-hour bars
+CHART_3H_BARS = 65     # ~30 trading days of 3-hour bars
+
 
 
 def download_sp500_history(period: str = "10d"):
@@ -108,6 +114,48 @@ def download_chart_history(tickers, period: str = CHART_PERIOD):
             tickers_str,
             period=period,
             interval="1d",
+            progress=False,
+            threads=True,
+            auto_adjust=True,
+            ignore_tz=True,
+        )
+
+
+def download_intraday_15m(tickers):
+    """Download 15-minute intraday data (last 60 days max from Yahoo)."""
+    if not tickers:
+        return None
+
+    print(f"Downloading 15-min intraday data for {len(tickers)} tickers...")
+    tickers_str = " ".join(tickers)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return yf.download(
+            tickers_str,
+            period="5d",  # ~5 trading days of 15-min data
+            interval="15m",
+            progress=False,
+            threads=True,
+            auto_adjust=True,
+            ignore_tz=True,
+        )
+
+
+def download_intraday_1h(tickers):
+    """Download 1-hour intraday data (last 730 days max from Yahoo)."""
+    if not tickers:
+        return None
+
+    print(f"Downloading 1-hour intraday data for {len(tickers)} tickers...")
+    tickers_str = " ".join(tickers)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return yf.download(
+            tickers_str,
+            period="1mo",  # ~30 trading days of hourly data
+            interval="1h",
             progress=False,
             threads=True,
             auto_adjust=True,
@@ -159,17 +207,35 @@ def _resample_ohlc(frame: pd.DataFrame, rule: str) -> pd.DataFrame:
     return resampled.dropna(subset=["open", "close"])
 
 
-def _format_candles(frame: pd.DataFrame, max_bars: int) -> list[dict]:
+def _format_candles(frame: pd.DataFrame, max_bars: int, use_datetime: bool = False) -> list[dict]:
+    """Format candles for chart display.
+    
+    Args:
+        frame: DataFrame with OHLC data
+        max_bars: Maximum number of bars to return
+        use_datetime: If True, use full datetime for timestamp (for intraday).
+                     If False, use date only (for daily/weekly/monthly).
+    """
     if frame.empty:
         return []
 
     frame = frame.tail(max_bars)
     candles = []
     for idx, row in frame.iterrows():
-        candle_time = datetime.combine(idx.date(), datetime.min.time(), tzinfo=timezone.utc)
+        if use_datetime:
+            # For intraday data, use the full datetime
+            if hasattr(idx, 'timestamp'):
+                candle_time = int(idx.timestamp())
+            else:
+                candle_time = int(datetime.combine(idx.date(), datetime.min.time(), tzinfo=timezone.utc).timestamp())
+        else:
+            # For daily/weekly/monthly, use date at midnight UTC
+            candle_time = datetime.combine(idx.date(), datetime.min.time(), tzinfo=timezone.utc)
+            candle_time = int(candle_time.timestamp())
+        
         candles.append(
             {
-                "time": int(candle_time.timestamp()),
+                "time": candle_time,
                 "open": float(row["open"]),
                 "high": float(row["high"]),
                 "low": float(row["low"]),
@@ -179,12 +245,26 @@ def _format_candles(frame: pd.DataFrame, max_bars: int) -> list[dict]:
     return candles
 
 
-def build_chart_payloads(data, tickers) -> dict:
+def _format_intraday_candles(frame: pd.DataFrame, max_bars: int) -> list[dict]:
+    """Format intraday candles preserving full timestamp."""
+    return _format_candles(frame, max_bars, use_datetime=True)
+
+
+def build_chart_payloads(data, tickers, data_15m=None, data_1h=None) -> dict:
+    """Build chart payloads with daily, weekly, monthly, and intraday data.
+    
+    Args:
+        data: Daily OHLC data
+        tickers: List of ticker symbols
+        data_15m: Optional 15-minute intraday data
+        data_1h: Optional 1-hour intraday data
+    """
     payloads = {}
     if data is None:
         return payloads
 
     for ticker in tickers:
+        # Daily/Weekly/Monthly from daily data
         frame = _build_ohlc_frame(data, ticker)
         if frame is None or frame.empty:
             continue
@@ -193,12 +273,35 @@ def build_chart_payloads(data, tickers) -> dict:
         weekly = _format_candles(_resample_ohlc(frame, "W-FRI"), CHART_WEEK_BARS)
         monthly = _format_candles(_resample_ohlc(frame, "M"), CHART_MONTH_BARS)
 
-        payloads[ticker] = {
+        payload = {
             "ticker": ticker,
             "day": daily,
             "week": weekly,
             "month": monthly,
+            "m15": [],
+            "h1": [],
+            "h2": [],
+            "h3": [],
         }
+
+        # 15-minute data
+        if data_15m is not None:
+            frame_15m = _build_ohlc_frame(data_15m, ticker)
+            if frame_15m is not None and not frame_15m.empty:
+                payload["m15"] = _format_intraday_candles(frame_15m, CHART_15M_BARS)
+
+        # 1-hour data and resampled 2h/3h
+        if data_1h is not None:
+            frame_1h = _build_ohlc_frame(data_1h, ticker)
+            if frame_1h is not None and not frame_1h.empty:
+                payload["h1"] = _format_intraday_candles(frame_1h, CHART_1H_BARS)
+                # Resample to 2-hour and 3-hour
+                frame_2h = _resample_ohlc(frame_1h, "2h")
+                frame_3h = _resample_ohlc(frame_1h, "3h")
+                payload["h2"] = _format_intraday_candles(frame_2h, CHART_2H_BARS)
+                payload["h3"] = _format_intraday_candles(frame_3h, CHART_3H_BARS)
+
+        payloads[ticker] = payload
 
     return payloads
 
@@ -1036,21 +1139,22 @@ def generate_html(
 
         .chart-tabs {{
             display: inline-flex;
-            gap: 0.4rem;
+            flex-wrap: wrap;
+            gap: 0.3rem;
             padding: 0.25rem;
             background: var(--bg-card);
             border: 1px solid var(--border-color);
-            border-radius: 999px;
+            border-radius: 12px;
         }}
 
         .chart-tab {{
-            padding: 0.45rem 0.9rem;
-            border-radius: 999px;
+            padding: 0.4rem 0.7rem;
+            border-radius: 8px;
             border: 1px solid transparent;
             background: transparent;
             color: var(--text-secondary);
-            font-family: 'Outfit', sans-serif;
-            font-size: 0.9rem;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.2s ease;
@@ -1064,13 +1168,14 @@ def generate_html(
         .chart-tab.active {{
             background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
             color: var(--text-primary);
-            box-shadow: 0 6px 20px rgba(0, 170, 255, 0.2);
+            box-shadow: 0 4px 15px rgba(0, 170, 255, 0.2);
         }}
 
         .chart-note {{
             color: var(--text-muted);
-            font-size: 0.85rem;
+            font-size: 0.8rem;
         }}
+
 
         .chart-body {{
             position: relative;
@@ -1439,12 +1544,17 @@ def generate_html(
             </div>
             <div class="chart-controls">
                 <div class="chart-tabs">
+                    <button class="chart-tab" data-range="m15">15M</button>
+                    <button class="chart-tab" data-range="h1">1H</button>
+                    <button class="chart-tab" data-range="h2">2H</button>
+                    <button class="chart-tab" data-range="h3">3H</button>
                     <button class="chart-tab active" data-range="day">1D</button>
                     <button class="chart-tab" data-range="week">1W</button>
                     <button class="chart-tab" data-range="month">1M</button>
                 </div>
-                <div class="chart-note">Daily candles aggregated into weekly/monthly views.</div>
+                <div class="chart-note">Intraday (15M-3H) • Daily • Weekly • Monthly candlestick views</div>
             </div>
+
             <div class="chart-body">
                 <div id="chartContainer"></div>
                 <div class="chart-state hidden" id="chartState">Loading chart...</div>
@@ -1662,23 +1772,41 @@ def generate_html(
                 }});
         }}
 
+        function getTimeframeLabel(range) {{
+            const labels = {{
+                'm15': '15-Minute Candles',
+                'h1': '1-Hour Candles',
+                'h2': '2-Hour Candles',
+                'h3': '3-Hour Candles',
+                'day': 'Daily Candles',
+                'week': 'Weekly Candles',
+                'month': 'Monthly Candles'
+            }};
+            return labels[range] || 'Candlestick Chart';
+        }}
+
         function setActiveChartRange(range) {{
             activeChartRange = range;
             chartTabs.forEach(tab => {{
                 tab.classList.toggle('active', tab.dataset.range === range);
             }});
 
+            // Update subtitle based on selected timeframe
+            chartSubtitle.textContent = getTimeframeLabel(range);
+
             if (activeChartTicker && chartCache[activeChartTicker]) {{
                 renderChartData(chartCache[activeChartTicker], activeChartRange);
             }}
         }}
 
+
         function openChart(ticker) {{
             activeChartTicker = ticker;
             chartTitle.textContent = `${{ticker}} Candlesticks`;
-            chartSubtitle.textContent = 'Daily, weekly, and monthly candles';
+            chartSubtitle.textContent = getTimeframeLabel(activeChartRange);
             chartModal.classList.remove('hidden');
             setChartState('Loading chart...');
+
 
             // Use requestAnimationFrame to ensure DOM is laid out before creating chart
             requestAnimationFrame(() => {{
@@ -1873,10 +2001,25 @@ def main():
             for stock in (daily_gainers + daily_losers + weekly_gainers + weekly_losers)
         }
     )
+    
+    # Download daily chart history
     chart_history = download_chart_history(chart_tickers, period=CHART_PERIOD)
-    chart_payloads = build_chart_payloads(chart_history, chart_tickers)
+    
+    # Download intraday data for charts
+    print("\n📈 Downloading intraday chart data...")
+    intraday_15m = download_intraday_15m(chart_tickers)
+    intraday_1h = download_intraday_1h(chart_tickers)
+    
+    # Build chart payloads with all timeframes
+    chart_payloads = build_chart_payloads(
+        chart_history, 
+        chart_tickers, 
+        data_15m=intraday_15m, 
+        data_1h=intraday_1h
+    )
     write_chart_payloads(chart_payloads, "dist/data/charts")
-    print(f"   Charts: {len(chart_payloads)} tickers")
+    print(f"   Charts: {len(chart_payloads)} tickers (with intraday data)")
+
 
     # Generate CSV files
     print("\n📁 Generating CSV files...")
